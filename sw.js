@@ -1,5 +1,8 @@
-const CACHE = 'ggc-v1';
-const ASSETS = ['/', '/index.html'];
+const CACHE = 'ggc-v2';
+const ASSETS = [
+  '/ggc-phoolnagar/',
+  '/ggc-phoolnagar/index.html'
+];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
 });
@@ -8,3 +11,4 @@ self.addEventListener('fetch', e => {
     fetch(e.request).catch(() => caches.match(e.request))
   );
 });
+ 
