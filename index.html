@@ -367,7 +367,7 @@ function showApp(){
 
 function buildNav(){
   const tabs=currentRole==='admin'
-    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['reports','📈 Reports']]
+    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports']]
     :[['take-attendance','📷 Take Attendance'],['my-reports','📊 My Reports']];
   document.getElementById('nav-tabs').innerHTML=tabs.map(([id,lbl])=>`<button class="nav-tab" onclick="renderPage('${id}')" id="nav-${id}">${lbl}</button>`).join('');
 }
@@ -377,26 +377,25 @@ function setActiveNav(id){
   const el=document.getElementById('nav-'+id);if(el)el.classList.add('active');
 }
 
-async function refreshAttendance(){
+let lastRefresh=0;
+async function refreshAttendance(force=false){
+  const now=Date.now();
+  // Only refresh if forced or data is older than 5 minutes
+  if(!force&&(now-lastRefresh)<5*60*1000)return;
   try{
-    const res=await fetch(SCRIPT_URL+'?t='+Date.now());
+    const res=await fetch(SCRIPT_URL+'?t='+now);
     const data=await res.json();
     if(data.success){
-      // Always trust Sheets as source of truth
-      if(data.attendance&&data.attendance.length){
-        DB.attendance=data.attendance;
-      }
-      // Also refresh teacherGroups in case updated
-      if(data.teacherGroups&&data.teacherGroups.length){
-        DB.teacherGroups=data.teacherGroups;
-      }
+      if(data.attendance&&data.attendance.length)DB.attendance=data.attendance;
+      if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
+      lastRefresh=now;
     }
   }catch(e){}
 }
 function renderPage(id){
   stopScanner();setActiveNav(id);
   const c=document.getElementById('main-content');
-  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
+  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'timetable':pageTimetable,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
   if(id==='dashboard'||id==='reports'||id==='my-reports'){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading latest data...</p></div>`;
     refreshAttendance().then(()=>{
@@ -441,7 +440,7 @@ function pageDashboard(){
       ${[...new Set(todayRecs.map(a=>a.subject))].map(subj=>{
         const recs=todayRecs.filter(a=>a.subject===subj);
         const p=recs.filter(a=>a.status==='present').length;
-        return`<tr><td><strong>${subj}</strong></td><td>${recs[0]?.teacher_name||'—'}</td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td style="color:var(--text2)">${recs[0]?.time||'—'}</td></tr>`;
+        return`<tr><td><strong>${subj}</strong></td><td>${recs[0]?.teacher_name||'—'}</td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td style="color:var(--text2)">${formatTime(recs[0]?.time)}</td></tr>`;
       }).join('')}
     </table></div>`}
   </div>`;
@@ -758,11 +757,10 @@ function pageTakeAttendance(){
         </select>
       </div>
       <div class="form-group" style="flex:1;min-width:140px"><label>Class Group</label>
-        <select id="att-group" onchange="loadStudentsForSubject()">
-          <option value="">All Students</option>
-<option value="science">FSc + ICS + ICom</option>
-<option value="arts">FA + FA-IT</option>
-        </select>
+        <div id="att-group-display" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text2);background:var(--surface2);min-height:40px;display:flex;align-items:center">
+          Auto — select subject first
+        </div>
+        <input type="hidden" id="att-group" value="">
       </div>
       <div class="form-group" style="flex:1;min-width:160px"><label>Subject</label>
         <select id="att-subject" onchange="loadStudentsForSubject()">
@@ -810,12 +808,15 @@ function loadStudentsForSubject(){
     if(autoGroups&&autoGroups.length){
       activeGroups=[...new Set(autoGroups.flatMap(g=>getGroupPrograms(g)||[]))];
       const groupEl=document.getElementById('att-group');
+      const groupDisplay=document.getElementById('att-group-display');
       if(groupEl){
         if(autoGroups.length===1){
           groupEl.value=autoGroups[0];
           manualGroup=autoGroups[0];
-        } else {
+          if(groupDisplay)groupDisplay.textContent=autoGroups[0]==='science'?'FSc + ICS + ICom':'FA + FA-IT';
+        } else if(autoGroups.length===2){
           groupEl.value='';
+          if(groupDisplay)groupDisplay.textContent='All Students (Both Groups)';
         }
       }
     }
@@ -1121,7 +1122,7 @@ function pageMyReports(){
   const teacher=currentUser.teacher;
   const tid=teacher.id||teacher.teacher_id;
   const myRecs=DB.attendance.filter(a=>String(a.teacher_id)===String(tid));
-  const sessions=[...new Set(myRecs.map(a=>a.date+'|'+a.subject))];
+  const sessions=[...new Set(myRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject))];
   return`<div class="page-header"><h2>My Sessions</h2><p>Your attendance history</p></div>
   <div class="stats-grid">
     <div class="stat-card sc-green"><div class="stat-label">Sessions Taken</div><div class="stat-value">${sessions.length}</div></div>
@@ -1132,11 +1133,131 @@ function pageMyReports(){
     <tr><th>Date</th><th>Subject</th><th>Present</th><th>Absent</th><th>Total</th></tr>
     ${sessions.map(key=>{
       const[date,subject]=key.split('|');
-      const recs=myRecs.filter(a=>a.date===date&&a.subject===subject);
+      const recs=myRecs.filter(a=>String(a.date).split('T')[0]===date&&a.subject===subject);
       const p=recs.filter(a=>a.status==='present').length;
       return`<tr><td>${formatDate(date)}</td><td><strong>${subject}</strong></td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td>${recs.length}</td></tr>`;
     }).join('')}
   </table></div>`}`;
+}
+
+function pageTimetable(){
+  return`<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div><h2>🗓️ Timetable Manager</h2><p>Manage teacher-group assignments. Changes save to Google Sheets.</p></div>
+    <button class="btn btn-primary btn-sm" onclick="showAddTimetableRow()">+ Add Assignment</button>
+  </div>
+  <div class="alert alert-info" style="margin-bottom:16px">Click any row to edit. Group assignments control which students each teacher sees when taking attendance.</div>
+  <div class="table-wrap"><table id="timetable-table">
+    <tr><th>Teacher</th><th>Subject</th><th>Year</th><th>Group</th><th>Actions</th></tr>
+    ${DB.teacherGroups.map((tg,i)=>`<tr>
+      <td><strong>${tg.teacher_name||tg.teacher_id}</strong><br><span style="font-size:10px;color:var(--text3)">${tg.teacher_id}</span></td>
+      <td>${tg.subject}</td>
+      <td><span class="badge badge-gold">${tg.year}</span></td>
+      <td><span class="badge ${tg.group==='science'?'badge-green':'badge-amber'}">${tg.group==='science'?'FSc+ICS+ICom':'FA+FA-IT'}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="editTimetableRow(${i})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTimetableRow(${i})">Delete</button></td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+
+function showAddTimetableRow(){
+  const teacherOptions=DB.teachers.map(t=>`<option value="${t.id||t.teacher_id}">${t.name}</option>`).join('');
+  const subjSet=[...new Set(DB.students.flatMap(s=>DB.getStudentSubjects(s)))].sort();
+  const subjOptions=subjSet.map(s=>`<option>${s}</option>`).join('');
+  showModal('Add Teacher Assignment',`
+    <div class="form-group"><label>Teacher</label>
+      <select id="tt-teacher">${teacherOptions}</select>
+    </div>
+    <div class="form-group"><label>Subject</label>
+      <select id="tt-subject">${subjOptions}</select>
+    </div>
+    <div class="form-group"><label>Year</label>
+      <select id="tt-year">
+        <option value="1st Year">1st Year</option>
+        <option value="2nd Year">2nd Year</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Group</label>
+      <select id="tt-group">
+        <option value="science">FSc + ICS + ICom (Science)</option>
+        <option value="arts">FA + FA-IT (Arts)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-primary btn-sm" onclick="saveTimetableRow()">Save</button>
+      <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+
+async function saveTimetableRow(){
+  const tid=document.getElementById('tt-teacher').value;
+  const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
+  const subject=document.getElementById('tt-subject').value;
+  const year=document.getElementById('tt-year').value;
+  const group=document.getElementById('tt-group').value;
+  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
+  // Check for duplicate
+  const exists=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&tg.year===year&&tg.group===group);
+  if(exists){showToast('This assignment already exists','error');return;}
+  DB.teacherGroups.push(newRow);
+  await sheetsCall({action:'saveTeacherGroup',row:newRow});
+  closeModal();
+  showToast('Assignment added','success');
+  renderPage('timetable');
+}
+
+function editTimetableRow(idx){
+  const tg=DB.teacherGroups[idx];
+  if(!tg)return;
+  const teacherOptions=DB.teachers.map(t=>`<option value="${t.id||t.teacher_id}" ${(t.id||t.teacher_id)===tg.teacher_id?'selected':''}>${t.name}</option>`).join('');
+  const subjSet=[...new Set(DB.students.flatMap(s=>DB.getStudentSubjects(s)))].sort();
+  const subjOptions=subjSet.map(s=>`<option ${s===tg.subject?'selected':''}>${s}</option>`).join('');
+  showModal('Edit Assignment',`
+    <div class="form-group"><label>Teacher</label>
+      <select id="tt-teacher">${teacherOptions}</select>
+    </div>
+    <div class="form-group"><label>Subject</label>
+      <select id="tt-subject">${subjOptions}</select>
+    </div>
+    <div class="form-group"><label>Year</label>
+      <select id="tt-year">
+        <option value="1st Year" ${tg.year==='1st Year'?'selected':''}>1st Year</option>
+        <option value="2nd Year" ${tg.year==='2nd Year'?'selected':''}>2nd Year</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Group</label>
+      <select id="tt-group">
+        <option value="science" ${tg.group==='science'?'selected':''}>FSc + ICS + ICom (Science)</option>
+        <option value="arts" ${tg.group==='arts'?'selected':''}>FA + FA-IT (Arts)</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-primary btn-sm" onclick="updateTimetableRow(${idx})">Update</button>
+      <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
+    </div>`);
+}
+
+async function updateTimetableRow(idx){
+  const tid=document.getElementById('tt-teacher').value;
+  const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
+  const subject=document.getElementById('tt-subject').value;
+  const year=document.getElementById('tt-year').value;
+  const group=document.getElementById('tt-group').value;
+  const oldRow=DB.teacherGroups[idx];
+  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
+  DB.teacherGroups[idx]=newRow;
+  await sheetsCall({action:'updateTeacherGroup',oldRow,newRow});
+  closeModal();
+  showToast('Assignment updated','success');
+  renderPage('timetable');
+}
+
+async function deleteTimetableRow(idx){
+  if(!confirm('Delete this assignment?'))return;
+  const row=DB.teacherGroups[idx];
+  DB.teacherGroups.splice(idx,1);
+  await sheetsCall({action:'deleteTeacherGroup',row});
+  showToast('Assignment deleted','success');
+  renderPage('timetable');
 }
 
 function showSubjectReport(roll){
@@ -1197,7 +1318,36 @@ function showToast(msg,type=''){
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function formatDate(d){
   if(!d)return '';
-  return new Date(d+'T00:00:00').toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'});
+  // Handle both "2026-03-16" and "2026-03-16T00:00:00.000Z" formats
+  const clean=String(d).split('T')[0];
+  if(!clean||clean==='Invalid Date'||clean.length<8)return String(d);
+  try{return new Date(clean+'T00:00:00').toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'});}
+  catch(e){return clean;}
+}
+function formatTime(t){
+  if(!t)return '—';
+  const s=String(t);
+  // Handle "1899-12-30T21:45:00.000Z" format from Sheets
+  if(s.includes('1899-12-30T')){
+    const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
+    if(parts.length>=2){
+      let h=parseInt(parts[0]);const m=parts[1];
+      const ampm=h>=12?'PM':'AM';
+      h=h%12||12;
+      return`${h}:${m} ${ampm}`;
+    }
+  }
+  // Handle "HH:MM AM/PM" already formatted
+  if(s.includes('AM')||s.includes('PM'))return s;
+  // Handle "HH:MM" format
+  if(s.includes(':')&&s.length<=5){
+    const parts=s.split(':');
+    let h=parseInt(parts[0]);const m=parts[1];
+    const ampm=h>=12?'PM':'AM';
+    h=h%12||12;
+    return`${h}:${m} ${ampm}`;
+  }
+  return s;
 }
 // ── OFFLINE SYNC ──
 function saveToQueue(payload){
