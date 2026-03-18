@@ -540,7 +540,6 @@ function showAddStudent(){
     <div class="form-grid">
       <div class="form-group"><label>Roll Number</label><input type="text" id="ns-roll" placeholder="e.g. 011" maxlength="3"></div>
       <div class="form-group"><label>Full Name</label><input type="text" id="ns-name" placeholder="Student full name"></div>
-      <div class="form-group"><label>Father Name</label><input type="text" id="ns-father" placeholder="Father's name"></div>
     </div>
     <div class="form-group"><label>Program</label>
       <select id="ns-program" onchange="updateSubjectOverrides()">
@@ -592,7 +591,6 @@ function updateSubjectOverrides(){
 async function addStudent(){
   const roll=document.getElementById('ns-roll').value.trim().padStart(3,'0');
   const name=document.getElementById('ns-name').value.trim();
-  const father=document.getElementById('ns-father')?.value.trim()||'';
   const prog=document.getElementById('ns-program').value;
   const session=document.getElementById('ns-session')?.value.trim()||'';
   const phone=document.getElementById('ns-phone')?.value.trim()||'';
@@ -631,7 +629,7 @@ async function addStudent(){
       }
     }
     
-    const student={roll_no:roll,roll:roll,name,father_name:father,program:prog,subjects:subjectsStr,photo_url,phone,session,blood_group:blood,address};
+    const student={roll_no:roll,roll:roll,name,program:prog,subjects:subjectsStr,session,phone,blood_group:blood,address,photo_url};
     await sheetsCall({action:'saveStudent',student});
     DB.students.push(student);
     closeModal();showToast(`${name} added successfully`,'success');renderPage('students');
@@ -643,7 +641,6 @@ function editStudent(roll){
   const currentSubjs=DB.getStudentSubjects(s);
   showModal(`Edit — ${s.name}`,`
     <div class="form-group"><label>Full Name</label><input type="text" id="es-name" value="${s.name}"></div>
-    <div class="form-group"><label>Father Name</label><input type="text" id="es-father" value="${s.father_name||''}"></div>
     <div class="form-group"><label>Program</label>
       <select id="es-program" onchange="updateEditSubjects('${roll}')">
         ${Object.keys(DB.programs).map(p=>`<option ${p===s.program?'selected':''}>${p}</option>`).join('')}
@@ -656,28 +653,7 @@ function editStudent(roll){
           <input type="checkbox" value="${subj}" ${currentSubjs.includes(subj)?'checked':''} style="width:14px;height:14px;accent-color:var(--green)"> ${subj}
         </label>`).join('')}
     </div>
-    <div class="form-grid" style="margin-top:16px">
-      <div class="form-group"><label>Session (optional)</label><input type="text" id="es-session" value="${s.session||'2025-2026'}"></div>
-      <div class="form-group"><label>Phone (optional)</label><input type="text" id="es-phone" value="${s.phone||''}"></div>
-      <div class="form-group"><label>Blood Group (optional)</label>
-        <select id="es-blood">
-          <option value="">--</option>
-          <option ${s.blood_group==='A+'?'selected':''}>A+</option><option ${s.blood_group==='A-'?'selected':''}>A-</option>
-          <option ${s.blood_group==='B+'?'selected':''}>B+</option><option ${s.blood_group==='B-'?'selected':''}>B-</option>
-          <option ${s.blood_group==='AB+'?'selected':''}>AB+</option><option ${s.blood_group==='AB-'?'selected':''}>AB-</option>
-          <option ${s.blood_group==='O+'?'selected':''}>O+</option><option ${s.blood_group==='O-'?'selected':''}>O-</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group" style="margin-top:16px"><label>Address (optional)</label>
-      <textarea id="es-address" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit" rows="2" placeholder="Complete address">${s.address||''}</textarea>
-    </div>
-    <div class="form-group" style="margin-top:16px"><label>Photo (optional - upload new to replace)</label>
-      ${s.photo_url?`<div style="margin-bottom:8px;font-size:12px;color:var(--text2)">Current photo: <a href="${s.photo_url}" target="_blank">View</a></div>`:''}
-      <input type="file" id="es-photo" accept="image/*" onchange="previewPhoto(this)" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius)">
-      <div id="photo-preview"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:16px">
+    <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" id="save-student-btn" onclick="saveStudent('${roll}')">Save</button>
       <button class="btn btn-danger btn-sm" onclick="deleteStudent('${roll}')">Delete</button>
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
@@ -697,40 +673,12 @@ function updateEditSubjects(roll){
 async function saveStudent(roll){
   const s=DB.students.find(x=>(x.roll||x.roll_no)===roll);
   s.name=document.getElementById('es-name').value.trim();
-  s.father_name=document.getElementById('es-father')?.value.trim()||'';
   s.program=document.getElementById('es-program').value;
   const checked=[...document.querySelectorAll('#edit-subj-checkboxes input:checked')].map(c=>c.value);
   s.subjects=checked.join(',');
-  s.session=document.getElementById('es-session')?.value.trim()||'';
-  s.phone=document.getElementById('es-phone')?.value.trim()||'';
-  s.blood_group=document.getElementById('es-blood')?.value||'';
-  s.address=document.getElementById('es-address')?.value.trim()||'';
-  
   const btn=document.getElementById('save-student-btn');
   btn.innerHTML='<span class="spinner"></span>';btn.disabled=true;
-  
   try{
-    const photoInput=document.getElementById('es-photo');
-    if(photoInput&&photoInput.files.length>0){
-      const file=photoInput.files[0];
-      showToast('Uploading new photo...','info');
-      const base64=await fileToBase64(file);
-      const uploadRes=await sheetsCall({
-        action:'uploadPhoto',
-        fileData:base64,
-        fileName:`student_${roll}.jpg`,
-        mimeType:file.type,
-        oldPhotoId:s.photo_url?s.photo_url.split('id=')[1]:null
-      });
-      if(uploadRes.success){
-        s.photo_url=uploadRes.photoUrl;
-      }else{
-        showToast('Photo upload failed: '+uploadRes.error,'error');
-        btn.innerHTML='Save';btn.disabled=false;
-        return;
-      }
-    }
-    
     await sheetsCall({action:'saveStudent',student:{...s,roll_no:roll}});
     closeModal();showToast('Student updated','success');renderPage('students');
   }catch(e){showToast('Save failed','error');btn.innerHTML='Save';btn.disabled=false;}
