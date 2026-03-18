@@ -540,6 +540,7 @@ function showAddStudent(){
     <div class="form-grid">
       <div class="form-group"><label>Roll Number</label><input type="text" id="ns-roll" placeholder="e.g. 011" maxlength="3"></div>
       <div class="form-group"><label>Full Name</label><input type="text" id="ns-name" placeholder="Student full name"></div>
+      <div class="form-group"><label>Father Name</label><input type="text" id="ns-father" placeholder="Father's name"></div>
     </div>
     <div class="form-group"><label>Program</label>
       <select id="ns-program" onchange="updateSubjectOverrides()">
@@ -591,6 +592,7 @@ function updateSubjectOverrides(){
 async function addStudent(){
   const roll=document.getElementById('ns-roll').value.trim().padStart(3,'0');
   const name=document.getElementById('ns-name').value.trim();
+  const father=document.getElementById('ns-father')?.value.trim()||'';
   const prog=document.getElementById('ns-program').value;
   const session=document.getElementById('ns-session')?.value.trim()||'';
   const phone=document.getElementById('ns-phone')?.value.trim()||'';
@@ -629,7 +631,7 @@ async function addStudent(){
       }
     }
     
-    const student={roll_no:roll,roll:roll,name,program:prog,subjects:subjectsStr,session,phone,blood_group:blood,address,photo_url};
+    const student={roll_no:roll,roll:roll,name,father_name:father,program:prog,subjects:subjectsStr,photo_url,phone,session,blood_group:blood,address};
     await sheetsCall({action:'saveStudent',student});
     DB.students.push(student);
     closeModal();showToast(`${name} added successfully`,'success');renderPage('students');
@@ -641,6 +643,7 @@ function editStudent(roll){
   const currentSubjs=DB.getStudentSubjects(s);
   showModal(`Edit — ${s.name}`,`
     <div class="form-group"><label>Full Name</label><input type="text" id="es-name" value="${s.name}"></div>
+    <div class="form-group"><label>Father Name</label><input type="text" id="es-father" value="${s.father_name||''}"></div>
     <div class="form-group"><label>Program</label>
       <select id="es-program" onchange="updateEditSubjects('${roll}')">
         ${Object.keys(DB.programs).map(p=>`<option ${p===s.program?'selected':''}>${p}</option>`).join('')}
@@ -694,6 +697,7 @@ function updateEditSubjects(roll){
 async function saveStudent(roll){
   const s=DB.students.find(x=>(x.roll||x.roll_no)===roll);
   s.name=document.getElementById('es-name').value.trim();
+  s.father_name=document.getElementById('es-father')?.value.trim()||'';
   s.program=document.getElementById('es-program').value;
   const checked=[...document.querySelectorAll('#edit-subj-checkboxes input:checked')].map(c=>c.value);
   s.subjects=checked.join(',');
