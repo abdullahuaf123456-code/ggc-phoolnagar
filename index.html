@@ -162,6 +162,54 @@ tr:hover td{background:var(--green-xlight)}
   .qr-grid{grid-template-columns:repeat(4,1fr)}
   body{background:#fff}
 }
+/* ══════════════════════════════════════════════════════════════════
+   ✅ NEW: ID CARD STYLES
+   ══════════════════════════════════════════════════════════════════ */
+.id-card-wrapper{margin-bottom:20px}
+.id-card{
+  width:323px;height:204px;position:relative;background:#fff;
+  border:2px solid #000;border-radius:8px;overflow:hidden;
+  margin:0 auto;box-shadow:0 6px 20px rgba(0,0,0,.15)
+}
+.id-card .id-header{
+  background:linear-gradient(135deg,#145e2c,#1a7a3a);
+  padding:8px;text-align:center;color:#fff
+}
+.id-card .id-header h3{
+  font-size:13px;font-weight:800;letter-spacing:.5px;margin:0
+}
+.id-card .id-body{
+  display:flex;padding:12px;gap:12px;position:relative;
+  height:calc(100% - 32px)
+}
+.id-card .id-photo{
+  width:70px;height:90px;background:#f0f0f0;
+  border:2px solid #ccc;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:35px;border-radius:4px;overflow:hidden
+}
+.id-card .id-photo img{
+  width:100%;height:100%;object-fit:cover
+}
+.id-card .id-info-section{
+  flex:1;display:flex;flex-direction:column;position:relative
+}
+.id-card .id-info{font-size:11px;line-height:1.5}
+.id-card .id-info div{margin-bottom:4px}
+.id-card .id-info strong{font-weight:700;color:#1a7a3a}
+.id-card .id-qr-corner{
+  position:absolute;bottom:10px;right:0;width:55px;height:55px
+}
+.id-card .id-footer{
+  position:absolute;bottom:12px;left:12px;
+  font-size:9px;color:#666
+}
+#photo-preview{
+  max-width:200px;margin-top:8px;border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;display:none
+}
+#photo-preview img{width:100%;height:auto;display:block}
+#photo-preview.show{display:block}
 </style>
 </head>
 <body>
@@ -251,7 +299,7 @@ tr:hover td{background:var(--green-xlight)}
 <div id="modal-container"></div>
 
 <script>
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbzpBwWM3a0oQfCCmDlD_puHYJ0ZUuIDIzQ0IuTMFldLXC9e9pNUgpvv-gQjEVX4_SSnEA/exec';
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyv0N5mohpVT6d5LGt5DYbT1YMdO-FVHzuAjXLyYChhygpj6ououndtdfu28vjFcQ6VbQ/exec';
 
 const DEFAULT_PROGRAMS={
   'FSc Pre-Med':['Biology','Chemistry','Physics','English','Urdu','Islamic Studies'],
@@ -367,7 +415,7 @@ function showApp(){
 
 function buildNav(){
   const tabs=currentRole==='admin'
-    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports']]
+    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports'],['id-cards','🆔 ID Cards']]
     :[['take-attendance','📷 Take Attendance'],['my-reports','📊 My Reports']];
   document.getElementById('nav-tabs').innerHTML=tabs.map(([id,lbl])=>`<button class="nav-tab" onclick="renderPage('${id}')" id="nav-${id}">${lbl}</button>`).join('');
 }
@@ -395,7 +443,7 @@ async function refreshAttendance(force=false){
 function renderPage(id){
   stopScanner();setActiveNav(id);
   const c=document.getElementById('main-content');
-  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'timetable':pageTimetable,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
+  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'timetable':pageTimetable,'reports':pageReports,'id-cards':pageIDCards,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
   if(id==='dashboard'||id==='reports'||id==='my-reports'){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading latest data...</p></div>`;
     refreshAttendance().then(()=>{
@@ -406,6 +454,7 @@ function renderPage(id){
   }
   if(pages[id])c.innerHTML=pages[id]();
   if(id==='qr-cards')setTimeout(renderQRCodes,100);
+  if(id==='id-cards')setTimeout(renderIDCardQRCodes,100);
   if(id==='take-attendance')initAttendancePage();
 }
 
@@ -491,7 +540,6 @@ function showAddStudent(){
     <div class="form-grid">
       <div class="form-group"><label>Roll Number</label><input type="text" id="ns-roll" placeholder="e.g. 011" maxlength="3"></div>
       <div class="form-group"><label>Full Name</label><input type="text" id="ns-name" placeholder="Student full name"></div>
-      <div class="form-group"><label>Father Name</label><input type="text" id="ns-father" placeholder="Father's name"></div>
     </div>
     <div class="form-group"><label>Program</label>
       <select id="ns-program" onchange="updateSubjectOverrides()">
@@ -504,8 +552,8 @@ function showAddStudent(){
       <div id="subj-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px"></div>
     </div>
     <div class="form-grid" style="margin-top:16px">
-      <div class="form-group"><label>Session (optional)</label><input type="text" id="ns-session" value="2025-2026" placeholder="e.g. 2025-2026"></div>
-      <div class="form-group"><label>Phone (optional)</label><input type="text" id="ns-phone" placeholder="Phone number"></div>
+      <div class="form-group"><label>Session (optional)</label><input type="text" id="ns-session" placeholder="2025-2026" value="2025-2026"></div>
+      <div class="form-group"><label>Phone (optional)</label><input type="text" id="ns-phone" placeholder="0300-1234567"></div>
       <div class="form-group"><label>Blood Group (optional)</label>
         <select id="ns-blood">
           <option value="">--</option>
@@ -519,8 +567,9 @@ function showAddStudent(){
     <div class="form-group" style="margin-top:16px"><label>Address (optional)</label>
       <textarea id="ns-address" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit" rows="2" placeholder="Complete address"></textarea>
     </div>
-    <div class="form-group" style="margin-top:16px"><label>Photo (optional - max 100KB)</label>
-      <input type="file" id="ns-photo" accept="image/*" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius)">
+    <div class="form-group" style="margin-top:16px"><label>Photo (optional)</label>
+      <input type="file" id="ns-photo" accept="image/*" onchange="previewPhoto(this)" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius)">
+      <div id="photo-preview"></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn btn-primary btn-sm" id="add-student-btn" onclick="addStudent()">Add Student</button>
@@ -542,40 +591,45 @@ function updateSubjectOverrides(){
 async function addStudent(){
   const roll=document.getElementById('ns-roll').value.trim().padStart(3,'0');
   const name=document.getElementById('ns-name').value.trim();
-  const father=document.getElementById('ns-father')?.value.trim()||'';
   const prog=document.getElementById('ns-program').value;
   const session=document.getElementById('ns-session')?.value.trim()||'';
   const phone=document.getElementById('ns-phone')?.value.trim()||'';
   const blood=document.getElementById('ns-blood')?.value||'';
   const address=document.getElementById('ns-address')?.value.trim()||'';
   
-  if(!roll||!name||!prog){showToast('Fill required fields','error');return;}
+  if(!roll||!name||!prog){showToast('Fill all required fields','error');return;}
   if(DB.students.find(s=>(s.roll||s.roll_no)===roll)){showToast('Roll number already exists','error');return;}
   
   const checked=[...document.querySelectorAll('#subj-checkboxes input:checked')].map(c=>c.value);
   const defaults=DB.programs[prog]||[];
   const subjectsStr=JSON.stringify(checked)===JSON.stringify(defaults)?'':checked.join(',');
   
-  // Handle photo upload (base64)
-  let photo_url='';
-  const photoInput=document.getElementById('ns-photo');
-  if(photoInput&&photoInput.files.length>0){
-    const file=photoInput.files[0];
-    
-    // Validate file size (max 100KB)
-    if(file.size>100*1024){
-      showToast('Photo must be under 100KB','error');
-      return;
-    }
-    
-    showToast('Converting photo...','info');
-    photo_url=await fileToBase64(file);  // Store base64 directly
-  }
-  
-  const student={roll_no:roll,roll:roll,name,father_name:father,program:prog,subjects:subjectsStr,photo_url,phone,session,blood_group:blood,address};
   const btn=document.getElementById('add-student-btn');
   btn.innerHTML='<span class="spinner"></span> Saving...';btn.disabled=true;
+  
   try{
+    let photo_url='';
+    const photoInput=document.getElementById('ns-photo');
+    if(photoInput&&photoInput.files.length>0){
+      const file=photoInput.files[0];
+      showToast('Uploading photo...','info');
+      const base64=await fileToBase64(file);
+      const uploadRes=await sheetsCall({
+        action:'uploadPhoto',
+        fileData:base64,
+        fileName:`student_${roll}.jpg`,
+        mimeType:file.type
+      });
+      if(uploadRes.success){
+        photo_url=uploadRes.photoUrl;
+      }else{
+        showToast('Photo upload failed: '+uploadRes.error,'error');
+        btn.innerHTML='Add Student';btn.disabled=false;
+        return;
+      }
+    }
+    
+    const student={roll_no:roll,roll:roll,name,program:prog,subjects:subjectsStr,session,phone,blood_group:blood,address,photo_url};
     await sheetsCall({action:'saveStudent',student});
     DB.students.push(student);
     closeModal();showToast(`${name} added successfully`,'success');renderPage('students');
@@ -587,7 +641,6 @@ function editStudent(roll){
   const currentSubjs=DB.getStudentSubjects(s);
   showModal(`Edit — ${s.name}`,`
     <div class="form-group"><label>Full Name</label><input type="text" id="es-name" value="${s.name}"></div>
-    <div class="form-group"><label>Father Name</label><input type="text" id="es-father" value="${s.father_name||''}"></div>
     <div class="form-group"><label>Program</label>
       <select id="es-program" onchange="updateEditSubjects('${roll}')">
         ${Object.keys(DB.programs).map(p=>`<option ${p===s.program?'selected':''}>${p}</option>`).join('')}
@@ -600,27 +653,7 @@ function editStudent(roll){
           <input type="checkbox" value="${subj}" ${currentSubjs.includes(subj)?'checked':''} style="width:14px;height:14px;accent-color:var(--green)"> ${subj}
         </label>`).join('')}
     </div>
-    <div class="form-grid" style="margin-top:16px">
-      <div class="form-group"><label>Session (optional)</label><input type="text" id="es-session" value="${s.session||'2025-2026'}"></div>
-      <div class="form-group"><label>Phone (optional)</label><input type="text" id="es-phone" value="${s.phone||''}"></div>
-      <div class="form-group"><label>Blood Group (optional)</label>
-        <select id="es-blood">
-          <option value="">--</option>
-          <option ${s.blood_group==='A+'?'selected':''}>A+</option><option ${s.blood_group==='A-'?'selected':''}>A-</option>
-          <option ${s.blood_group==='B+'?'selected':''}>B+</option><option ${s.blood_group==='B-'?'selected':''}>B-</option>
-          <option ${s.blood_group==='AB+'?'selected':''}>AB+</option><option ${s.blood_group==='AB-'?'selected':''}>AB-</option>
-          <option ${s.blood_group==='O+'?'selected':''}>O+</option><option ${s.blood_group==='O-'?'selected':''}>O-</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group" style="margin-top:16px"><label>Address (optional)</label>
-      <textarea id="es-address" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit" rows="2" placeholder="Complete address">${s.address||''}</textarea>
-    </div>
-    <div class="form-group" style="margin-top:16px"><label>Photo (optional - upload new to replace, max 100KB)</label>
-      ${s.photo_url?`<div style="margin-bottom:8px;font-size:12px;color:var(--text2)">Current photo: <a href="${s.photo_url}" target="_blank">View</a></div>`:''}
-      <input type="file" id="es-photo" accept="image/*" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius)">
-    </div>
-    <div style="display:flex;gap:8px;margin-top:16px">
+    <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" id="save-student-btn" onclick="saveStudent('${roll}')">Save</button>
       <button class="btn btn-danger btn-sm" onclick="deleteStudent('${roll}')">Delete</button>
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
@@ -640,35 +673,12 @@ function updateEditSubjects(roll){
 async function saveStudent(roll){
   const s=DB.students.find(x=>(x.roll||x.roll_no)===roll);
   s.name=document.getElementById('es-name').value.trim();
-  s.father_name=document.getElementById('es-father')?.value.trim()||'';
   s.program=document.getElementById('es-program').value;
   const checked=[...document.querySelectorAll('#edit-subj-checkboxes input:checked')].map(c=>c.value);
   s.subjects=checked.join(',');
-  s.session=document.getElementById('es-session')?.value.trim()||'';
-  s.phone=document.getElementById('es-phone')?.value.trim()||'';
-  s.blood_group=document.getElementById('es-blood')?.value||'';
-  s.address=document.getElementById('es-address')?.value.trim()||'';
-  
   const btn=document.getElementById('save-student-btn');
   btn.innerHTML='<span class="spinner"></span>';btn.disabled=true;
-  
   try{
-    // Handle photo upload (base64)
-    const photoInput=document.getElementById('es-photo');
-    if(photoInput&&photoInput.files.length>0){
-      const file=photoInput.files[0];
-      
-      // Validate file size (max 100KB)
-      if(file.size>100*1024){
-        showToast('Photo must be under 100KB','error');
-        btn.innerHTML='Save';btn.disabled=false;
-        return;
-      }
-      
-      showToast('Converting photo...','info');
-      s.photo_url=await fileToBase64(file);  // Store base64 directly
-    }
-    
     await sheetsCall({action:'saveStudent',student:{...s,roll_no:roll}});
     closeModal();showToast('Student updated','success');renderPage('students');
   }catch(e){showToast('Save failed','error');btn.innerHTML='Save';btn.disabled=false;}
@@ -681,16 +691,6 @@ async function deleteStudent(roll){
     DB.students=DB.students.filter(s=>(s.roll||s.roll_no)!==roll);
     closeModal();showToast('Student deleted','success');renderPage('students');
   }catch(e){showToast('Delete failed','error');}
-}
-
-// ── HELPER: Convert file to base64 ──
-function fileToBase64(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>resolve(reader.result);
-    reader.onerror=reject;
-    reader.readAsDataURL(file);
-  });
 }
 
 function pageTeachers(){
@@ -1481,6 +1481,325 @@ async function syncPending(){
   if(btn){btn.innerHTML='🔄 Sync Now';btn.disabled=false;}
   showToast(`✓ Synced ${success} sessions to Google Sheets`,'success');
 }
+
+// ══════════════════════════════════════════════════════════════════
+// ✅ NEW: HELPER FUNCTIONS FOR ID CARDS
+// ══════════════════════════════════════════════════════════════════
+
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function previewPhoto(input){
+  const preview=document.getElementById('photo-preview');
+  if(input.files&&input.files[0]){
+    const reader=new FileReader();
+    reader.onload=function(e){
+      preview.innerHTML=`<img src="${e.target.result}" alt="Photo preview">`;
+      preview.classList.add('show');
+    };
+    reader.readAsDataURL(input.files[0]);
+  }else{
+    preview.innerHTML='';
+    preview.classList.remove('show');
+  }
+}
+
+function getYearFromProgram(program){
+  if(!program)return'1';
+  const prog=String(program).toLowerCase();
+  if(prog.includes('2nd')||prog.includes('second'))return'2';
+  return'1';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ✅ NEW: ID CARDS PAGE
+// ══════════════════════════════════════════════════════════════════
+
+function pageIDCards(){
+  const students=DB.students.sort((a,b)=>String(a.roll_no||a.roll).localeCompare(String(b.roll_no||b.roll)));
+  const programs=[...new Set(students.map(s=>s.program))].filter(Boolean);
+  
+  return`
+    <div class="page-header">
+      <h2>🆔 Student ID Cards</h2>
+      <p>View, print, and manage student ID cards with QR codes</p>
+    </div>
+    
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Filter & Actions</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm" onclick="printAllCards()">🖨️ Print All</button>
+          <button class="btn btn-success btn-sm" onclick="exportCardsPDF()">📄 Export PDF</button>
+        </div>
+      </div>
+      
+      <div style="margin-bottom:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div class="form-group" style="margin:0;flex:1;min-width:200px">
+          <label>Filter by Program</label>
+          <select id="program-filter" onchange="filterCards()" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px">
+            <option value="">All Programs (${students.length} students)</option>
+            ${programs.map(p=>{
+              const count=students.filter(s=>s.program===p).length;
+              return`<option value="${p}">${p} (${count})</option>`;
+            }).join('')}
+          </select>
+        </div>
+        <div style="color:var(--text3);font-size:12px">
+          <strong id="visible-count">${students.length}</strong> cards showing
+        </div>
+      </div>
+      
+      <div id="cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px">
+        ${students.map(s=>renderIDCard(s)).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderIDCard(student){
+  const roll=student.roll_no||student.roll;
+  const year=getYearFromProgram(student.program);
+  const yearText=year==='1'?'1st Year':'2nd Year';
+  const cardId=`card-${roll}`;
+  
+  return`
+    <div class="id-card-wrapper" data-program="${student.program||''}">
+      <div class="id-card" id="${cardId}">
+        <div class="id-header">
+          <h3>GOVT GRADUATE COLLEGE PHOOLNAGAR</h3>
+        </div>
+        <div class="id-body">
+          <div class="id-photo">
+            ${student.photo_url?`<img src="${student.photo_url}" alt="${student.name}">`:'👤'}
+          </div>
+          <div class="id-info-section">
+            <div class="id-info">
+              <div><strong>Name:</strong> ${student.name||'N/A'}</div>
+              <div><strong>Roll No:</strong> ${roll||'N/A'}</div>
+              <div><strong>Program:</strong> ${student.program||'N/A'}</div>
+              <div><strong>Year:</strong> ${yearText}</div>
+              <div><strong>Session:</strong> ${student.session||'2025-2026'}</div>
+              <div><strong>Phone:</strong> ${student.phone||'—'}</div>
+            </div>
+            <div class="id-qr-corner" id="qr-${roll}"></div>
+          </div>
+        </div>
+        <div class="id-footer">
+          Issued: ${new Date().toLocaleDateString('en-US',{month:'short',year:'numeric'})}
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:10px">
+        <button class="btn btn-outline btn-sm" onclick="printSingleCard('${cardId}')">🖨️ Print</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderIDCardQRCodes(){
+  DB.students.forEach(s=>{
+    const roll=s.roll_no||s.roll;
+    const year=getYearFromProgram(s.program);
+    const qrData=`${year}-${roll}`;
+    const elem=document.getElementById(`qr-${roll}`);
+    if(elem&&!elem.hasChildNodes()){
+      new QRCode(elem,{
+        text:qrData,
+        width:55,
+        height:55,
+        colorDark:'#145e2c',
+        colorLight:'#ffffff'
+      });
+    }
+  });
+}
+
+function filterCards(){
+  const filter=document.getElementById('program-filter').value;
+  const cards=document.querySelectorAll('.id-card-wrapper');
+  let visibleCount=0;
+  
+  cards.forEach(card=>{
+    if(!filter||card.dataset.program===filter){
+      card.style.display='block';
+      visibleCount++;
+    }else{
+      card.style.display='none';
+    }
+  });
+  
+  document.getElementById('visible-count').textContent=visibleCount;
+}
+
+function printSingleCard(cardId){
+  const card=document.getElementById(cardId);
+  if(!card)return;
+  
+  const printWindow=window.open('','_blank');
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Student ID Card</title>
+      <style>${getIDCardPrintStyles()}</style>
+    </head>
+    <body>
+      ${card.outerHTML}
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  
+  setTimeout(()=>{
+    printWindow.print();
+  },500);
+}
+
+function printAllCards(){
+  const cards=Array.from(document.querySelectorAll('.id-card-wrapper'))
+    .filter(wrapper=>wrapper.style.display!=='none')
+    .map(wrapper=>wrapper.querySelector('.id-card'));
+  
+  if(cards.length===0){
+    showToast('No cards to print','error');
+    return;
+  }
+  
+  const printWindow=window.open('','_blank');
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>All Student ID Cards</title>
+      <style>${getIDCardPrintStyles()}</style>
+    </head>
+    <body>
+      ${cards.map(c=>c.outerHTML).join('')}
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  
+  setTimeout(()=>{
+    printWindow.print();
+  },1000);
+}
+
+function exportCardsPDF(){
+  showToast('PDF export feature coming soon','info');
+}
+
+function getIDCardPrintStyles(){
+  return`
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{
+      font-family:'Segoe UI',Arial,sans-serif;
+      background:#fff;
+      padding:20px;
+    }
+    .id-card{
+      width:323px;
+      height:204px;
+      position:relative;
+      background:#fff;
+      border:2px solid #000;
+      border-radius:8px;
+      overflow:hidden;
+      margin:20px auto;
+      page-break-after:always;
+      box-shadow:none;
+    }
+    .id-card:last-child{
+      page-break-after:auto;
+    }
+    .id-header{
+      background:linear-gradient(135deg,#145e2c,#1a7a3a);
+      padding:8px;
+      text-align:center;
+      color:#fff;
+    }
+    .id-header h3{
+      font-size:13px;
+      font-weight:800;
+      letter-spacing:0.5px;
+      margin:0;
+    }
+    .id-body{
+      display:flex;
+      padding:12px;
+      gap:12px;
+      position:relative;
+      height:calc(100% - 32px);
+    }
+    .id-photo{
+      width:70px;
+      height:90px;
+      background:#f0f0f0;
+      border:2px solid #ccc;
+      flex-shrink:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:35px;
+      border-radius:4px;
+      overflow:hidden;
+    }
+    .id-photo img{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+    .id-info-section{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      position:relative;
+    }
+    .id-info{
+      font-size:11px;
+      line-height:1.5;
+    }
+    .id-info div{
+      margin-bottom:4px;
+    }
+    .id-info strong{
+      font-weight:700;
+      color:#1a7a3a;
+    }
+    .id-qr-corner{
+      position:absolute;
+      bottom:10px;
+      right:0;
+      width:55px;
+      height:55px;
+    }
+    .id-qr-corner img{
+      width:100%;
+      height:100%;
+    }
+    .id-footer{
+      position:absolute;
+      bottom:12px;
+      left:12px;
+      font-size:9px;
+      color:#666;
+    }
+    @media print{
+      body{padding:0;}
+      .id-card{
+        margin:10mm auto;
+        box-shadow:none;
+      }
+    }
+  `;
+}
+
 window.addEventListener('load',()=>{
   // Clear any old queue items from previous buggy versions
   // Apps Script is now idempotent so queue is not needed for normal flow
