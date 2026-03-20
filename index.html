@@ -380,7 +380,6 @@ function setActiveNav(id){
 let lastRefresh=0;
 async function refreshAttendance(force=false){
   const now=Date.now();
-  // Only refresh if forced or data is older than 5 minutes
   if(!force&&(now-lastRefresh)<5*60*1000)return;
   try{
     const res=await fetch(SCRIPT_URL+'?t='+now);
@@ -489,18 +488,45 @@ function filterStudents(){
 function showAddStudent(){
   showModal('Add New Student',`
     <div class="form-grid">
-      <div class="form-group"><label>Roll Number</label><input type="text" id="ns-roll" placeholder="e.g. 011" maxlength="3"></div>
-      <div class="form-group"><label>Full Name</label><input type="text" id="ns-name" placeholder="Student full name"></div>
+      <div class="form-group"><label>Roll Number ★</label><input type="text" id="ns-roll" placeholder="e.g. 011" maxlength="3"></div>
+      <div class="form-group"><label>Full Name ★</label><input type="text" id="ns-name" placeholder="Student full name"></div>
     </div>
-    <div class="form-group"><label>Program</label>
-      <select id="ns-program" onchange="updateSubjectOverrides()">
-        <option value="">Select program...</option>
-        ${Object.keys(DB.programs).map(p=>`<option>${p}</option>`).join('')}
-      </select>
+    <div class="form-group"><label>Father's Name ★</label><input type="text" id="ns-father" placeholder="Father's full name"></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Program ★</label>
+        <select id="ns-program" onchange="updateSubjectOverrides()">
+          <option value="">Select program...</option>
+          ${Object.keys(DB.programs).map(p=>`<option>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Session ★</label>
+        <select id="ns-session">
+          <option value="">Select session...</option>
+          <option value="2024-2025">2024-2025</option>
+          <option value="2025-2026">2025-2026</option>
+          <option value="2026-2027">2026-2027</option>
+        </select>
+      </div>
     </div>
     <div id="subject-overrides" style="display:none">
       <div class="alert alert-info">Default subjects loaded. Uncheck to remove for this student.</div>
       <div id="subj-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px"></div>
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Optional Information</div>
+      <div class="form-grid">
+        <div class="form-group" style="margin-bottom:10px"><label>Phone Number</label><input type="text" id="ns-phone" placeholder="e.g. 0300-1234567"></div>
+        <div class="form-group" style="margin-bottom:10px"><label>Blood Group</label>
+          <select id="ns-blood">
+            <option value="">Not provided</option>
+            <option value="A+">A+</option><option value="A-">A-</option>
+            <option value="B+">B+</option><option value="B-">B-</option>
+            <option value="AB+">AB+</option><option value="AB-">AB-</option>
+            <option value="O+">O+</option><option value="O-">O-</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0"><label>Address</label><input type="text" id="ns-address" placeholder="Home address (optional)"></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" id="add-student-btn" onclick="addStudent()">Add Student</button>
@@ -522,13 +548,18 @@ function updateSubjectOverrides(){
 async function addStudent(){
   const roll=document.getElementById('ns-roll').value.trim().padStart(3,'0');
   const name=document.getElementById('ns-name').value.trim();
+  const father=document.getElementById('ns-father').value.trim();
   const prog=document.getElementById('ns-program').value;
-  if(!roll||!name||!prog){showToast('Fill all fields','error');return;}
+  const session=document.getElementById('ns-session').value;
+  if(!roll||!name||!father||!prog||!session){showToast('Please fill all required fields (★)','error');return;}
   if(DB.students.find(s=>(s.roll||s.roll_no)===roll)){showToast('Roll number already exists','error');return;}
   const checked=[...document.querySelectorAll('#subj-checkboxes input:checked')].map(c=>c.value);
   const defaults=DB.programs[prog]||[];
   const subjectsStr=JSON.stringify(checked)===JSON.stringify(defaults)?'':checked.join(',');
-  const student={roll_no:roll,roll:roll,name,program:prog,subjects:subjectsStr,photo:''};
+  const phone=document.getElementById('ns-phone').value.trim();
+  const blood=document.getElementById('ns-blood').value;
+  const address=document.getElementById('ns-address').value.trim();
+  const student={roll_no:roll,roll:roll,name,father_name:father,program:prog,subjects:subjectsStr,session,phone,blood_group:blood,address,photo:''};
   const btn=document.getElementById('add-student-btn');
   btn.innerHTML='<span class="spinner"></span> Saving...';btn.disabled=true;
   try{
@@ -542,18 +573,51 @@ function editStudent(roll){
   const s=DB.students.find(x=>(x.roll||x.roll_no)===roll);if(!s)return;
   const currentSubjs=DB.getStudentSubjects(s);
   showModal(`Edit — ${s.name}`,`
-    <div class="form-group"><label>Full Name</label><input type="text" id="es-name" value="${s.name}"></div>
-    <div class="form-group"><label>Program</label>
-      <select id="es-program" onchange="updateEditSubjects('${roll}')">
-        ${Object.keys(DB.programs).map(p=>`<option ${p===s.program?'selected':''}>${p}</option>`).join('')}
-      </select>
+    <div class="form-grid">
+      <div class="form-group"><label>Full Name ★</label><input type="text" id="es-name" value="${s.name||''}"></div>
+      <div class="form-group"><label>Father's Name ★</label><input type="text" id="es-father" value="${s.father_name||''}"></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Program ★</label>
+        <select id="es-program" onchange="updateEditSubjects('${roll}')">
+          ${Object.keys(DB.programs).map(p=>`<option ${p===s.program?'selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Session ★</label>
+        <select id="es-session">
+          <option value="">Select session...</option>
+          <option value="2024-2025" ${s.session==='2024-2025'?'selected':''}>2024-2025</option>
+          <option value="2025-2026" ${s.session==='2025-2026'?'selected':''}>2025-2026</option>
+          <option value="2026-2027" ${s.session==='2026-2027'?'selected':''}>2026-2027</option>
+        </select>
+      </div>
     </div>
     <div class="alert alert-info" style="margin-bottom:12px">Override subjects for this student</div>
-    <div id="edit-subj-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:20px">
+    <div id="edit-subj-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
       ${(DB.programs[s.program]||[]).map(subj=>`
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
           <input type="checkbox" value="${subj}" ${currentSubjs.includes(subj)?'checked':''} style="width:14px;height:14px;accent-color:var(--green)"> ${subj}
         </label>`).join('')}
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Optional Information</div>
+      <div class="form-grid">
+        <div class="form-group" style="margin-bottom:10px"><label>Phone Number</label><input type="text" id="es-phone" value="${s.phone||''}" placeholder="e.g. 0300-1234567"></div>
+        <div class="form-group" style="margin-bottom:10px"><label>Blood Group</label>
+          <select id="es-blood">
+            <option value="">Not provided</option>
+            <option value="A+" ${s.blood_group==='A+'?'selected':''}>A+</option>
+            <option value="A-" ${s.blood_group==='A-'?'selected':''}>A-</option>
+            <option value="B+" ${s.blood_group==='B+'?'selected':''}>B+</option>
+            <option value="B-" ${s.blood_group==='B-'?'selected':''}>B-</option>
+            <option value="AB+" ${s.blood_group==='AB+'?'selected':''}>AB+</option>
+            <option value="AB-" ${s.blood_group==='AB-'?'selected':''}>AB-</option>
+            <option value="O+" ${s.blood_group==='O+'?'selected':''}>O+</option>
+            <option value="O-" ${s.blood_group==='O-'?'selected':''}>O-</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0"><label>Address</label><input type="text" id="es-address" value="${s.address||''}" placeholder="Home address (optional)"></div>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" id="save-student-btn" onclick="saveStudent('${roll}')">Save</button>
@@ -575,9 +639,14 @@ function updateEditSubjects(roll){
 async function saveStudent(roll){
   const s=DB.students.find(x=>(x.roll||x.roll_no)===roll);
   s.name=document.getElementById('es-name').value.trim();
+  s.father_name=document.getElementById('es-father').value.trim();
   s.program=document.getElementById('es-program').value;
+  s.session=document.getElementById('es-session').value;
   const checked=[...document.querySelectorAll('#edit-subj-checkboxes input:checked')].map(c=>c.value);
   s.subjects=checked.join(',');
+  s.phone=document.getElementById('es-phone').value.trim();
+  s.blood_group=document.getElementById('es-blood').value;
+  s.address=document.getElementById('es-address').value.trim();
   const btn=document.getElementById('save-student-btn');
   btn.innerHTML='<span class="spinner"></span>';btn.disabled=true;
   try{
@@ -808,15 +877,12 @@ function loadStudentsForSubject(){
     if(autoGroups&&autoGroups.length){
       activeGroups=[...new Set(autoGroups.flatMap(g=>getGroupPrograms(g)||[]))];
       const groupEl=document.getElementById('att-group');
-      const groupDisplay=document.getElementById('att-group-display');
       if(groupEl){
         if(autoGroups.length===1){
           groupEl.value=autoGroups[0];
           manualGroup=autoGroups[0];
-          if(groupDisplay)groupDisplay.textContent=autoGroups[0]==='science'?'FSc + ICS + ICom':'FA + FA-IT';
-        } else if(autoGroups.length===2){
+        } else {
           groupEl.value='';
-          if(groupDisplay)groupDisplay.textContent='All Students (Both Groups)';
         }
       }
     }
@@ -1122,7 +1188,7 @@ function pageMyReports(){
   const teacher=currentUser.teacher;
   const tid=teacher.id||teacher.teacher_id;
   const myRecs=DB.attendance.filter(a=>String(a.teacher_id)===String(tid));
-  const sessions=[...new Set(myRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject))];
+  const sessions=[...new Set(myRecs.map(a=>a.date+'|'+a.subject))];
   return`<div class="page-header"><h2>My Sessions</h2><p>Your attendance history</p></div>
   <div class="stats-grid">
     <div class="stat-card sc-green"><div class="stat-label">Sessions Taken</div><div class="stat-value">${sessions.length}</div></div>
@@ -1133,7 +1199,7 @@ function pageMyReports(){
     <tr><th>Date</th><th>Subject</th><th>Present</th><th>Absent</th><th>Total</th></tr>
     ${sessions.map(key=>{
       const[date,subject]=key.split('|');
-      const recs=myRecs.filter(a=>String(a.date).split('T')[0]===date&&a.subject===subject);
+      const recs=myRecs.filter(a=>a.date===date&&a.subject===subject);
       const p=recs.filter(a=>a.status==='present').length;
       return`<tr><td>${formatDate(date)}</td><td><strong>${subject}</strong></td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td>${recs.length}</td></tr>`;
     }).join('')}
@@ -1145,7 +1211,7 @@ function pageTimetable(){
     <div><h2>🗓️ Timetable Manager</h2><p>Manage teacher-group assignments. Changes save to Google Sheets.</p></div>
     <button class="btn btn-primary btn-sm" onclick="showAddTimetableRow()">+ Add Assignment</button>
   </div>
-  <div class="alert alert-info" style="margin-bottom:16px">Click any row to edit. Group assignments control which students each teacher sees when taking attendance.</div>
+  <div class="alert alert-info" style="margin-bottom:16px">Group assignments control which students each teacher sees when taking attendance.</div>
   <div class="table-wrap"><table id="timetable-table">
     <tr><th>Teacher</th><th>Subject</th><th>Year</th><th>Group</th><th>Actions</th></tr>
     ${DB.teacherGroups.map((tg,i)=>`<tr>
@@ -1158,18 +1224,13 @@ function pageTimetable(){
     </tr>`).join('')}
   </table></div>`;
 }
-
 function showAddTimetableRow(){
   const teacherOptions=DB.teachers.map(t=>`<option value="${t.id||t.teacher_id}">${t.name}</option>`).join('');
   const subjSet=[...new Set(DB.students.flatMap(s=>DB.getStudentSubjects(s)))].sort();
   const subjOptions=subjSet.map(s=>`<option>${s}</option>`).join('');
   showModal('Add Teacher Assignment',`
-    <div class="form-group"><label>Teacher</label>
-      <select id="tt-teacher">${teacherOptions}</select>
-    </div>
-    <div class="form-group"><label>Subject</label>
-      <select id="tt-subject">${subjOptions}</select>
-    </div>
+    <div class="form-group"><label>Teacher</label><select id="tt-teacher">${teacherOptions}</select></div>
+    <div class="form-group"><label>Subject</label><select id="tt-subject">${subjOptions}</select></div>
     <div class="form-group"><label>Year</label>
       <select id="tt-year">
         <option value="1st Year">1st Year</option>
@@ -1187,7 +1248,6 @@ function showAddTimetableRow(){
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     </div>`);
 }
-
 async function saveTimetableRow(){
   const tid=document.getElementById('tt-teacher').value;
   const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
@@ -1195,29 +1255,20 @@ async function saveTimetableRow(){
   const year=document.getElementById('tt-year').value;
   const group=document.getElementById('tt-group').value;
   const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
-  // Check for duplicate
   const exists=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&tg.year===year&&tg.group===group);
   if(exists){showToast('This assignment already exists','error');return;}
   DB.teacherGroups.push(newRow);
   await sheetsCall({action:'saveTeacherGroup',row:newRow});
-  closeModal();
-  showToast('Assignment added','success');
-  renderPage('timetable');
+  closeModal();showToast('Assignment added','success');renderPage('timetable');
 }
-
 function editTimetableRow(idx){
-  const tg=DB.teacherGroups[idx];
-  if(!tg)return;
+  const tg=DB.teacherGroups[idx];if(!tg)return;
   const teacherOptions=DB.teachers.map(t=>`<option value="${t.id||t.teacher_id}" ${(t.id||t.teacher_id)===tg.teacher_id?'selected':''}>${t.name}</option>`).join('');
   const subjSet=[...new Set(DB.students.flatMap(s=>DB.getStudentSubjects(s)))].sort();
   const subjOptions=subjSet.map(s=>`<option ${s===tg.subject?'selected':''}>${s}</option>`).join('');
   showModal('Edit Assignment',`
-    <div class="form-group"><label>Teacher</label>
-      <select id="tt-teacher">${teacherOptions}</select>
-    </div>
-    <div class="form-group"><label>Subject</label>
-      <select id="tt-subject">${subjOptions}</select>
-    </div>
+    <div class="form-group"><label>Teacher</label><select id="tt-teacher">${teacherOptions}</select></div>
+    <div class="form-group"><label>Subject</label><select id="tt-subject">${subjOptions}</select></div>
     <div class="form-group"><label>Year</label>
       <select id="tt-year">
         <option value="1st Year" ${tg.year==='1st Year'?'selected':''}>1st Year</option>
@@ -1235,7 +1286,6 @@ function editTimetableRow(idx){
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     </div>`);
 }
-
 async function updateTimetableRow(idx){
   const tid=document.getElementById('tt-teacher').value;
   const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
@@ -1246,20 +1296,15 @@ async function updateTimetableRow(idx){
   const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
   DB.teacherGroups[idx]=newRow;
   await sheetsCall({action:'updateTeacherGroup',oldRow,newRow});
-  closeModal();
-  showToast('Assignment updated','success');
-  renderPage('timetable');
+  closeModal();showToast('Assignment updated','success');renderPage('timetable');
 }
-
 async function deleteTimetableRow(idx){
   if(!confirm('Delete this assignment?'))return;
   const row=DB.teacherGroups[idx];
   DB.teacherGroups.splice(idx,1);
   await sheetsCall({action:'deleteTeacherGroup',row});
-  showToast('Assignment deleted','success');
-  renderPage('timetable');
+  showToast('Assignment deleted','success');renderPage('timetable');
 }
-
 function showSubjectReport(roll){
   const s=DB.students.find(x=>String(x.roll||x.roll_no).padStart(3,'0')===String(roll).padStart(3,'0'));
   if(!s)return;
@@ -1318,16 +1363,11 @@ function showToast(msg,type=''){
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function formatDate(d){
   if(!d)return '';
-  // Handle both "2026-03-16" and "2026-03-16T00:00:00.000Z" formats
-  const clean=String(d).split('T')[0];
-  if(!clean||clean==='Invalid Date'||clean.length<8)return String(d);
-  try{return new Date(clean+'T00:00:00').toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'});}
-  catch(e){return clean;}
+  return new Date(d+'T00:00:00').toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'});
 }
 function formatTime(t){
   if(!t)return '—';
   const s=String(t);
-  // Handle "1899-12-30T21:45:00.000Z" format from Sheets
   if(s.includes('1899-12-30T')){
     const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
     if(parts.length>=2){
@@ -1337,9 +1377,7 @@ function formatTime(t){
       return`${h}:${m} ${ampm}`;
     }
   }
-  // Handle "HH:MM AM/PM" already formatted
   if(s.includes('AM')||s.includes('PM'))return s;
-  // Handle "HH:MM" format
   if(s.includes(':')&&s.length<=5){
     const parts=s.split(':');
     let h=parseInt(parts[0]);const m=parts[1];
