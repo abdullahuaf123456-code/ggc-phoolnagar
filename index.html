@@ -162,54 +162,6 @@ tr:hover td{background:var(--green-xlight)}
   .qr-grid{grid-template-columns:repeat(4,1fr)}
   body{background:#fff}
 }
-/* ══════════════════════════════════════════════════════════════════
-   ✅ NEW: ID CARD STYLES
-   ══════════════════════════════════════════════════════════════════ */
-.id-card-wrapper{margin-bottom:20px}
-.id-card{
-  width:323px;height:204px;position:relative;background:#fff;
-  border:2px solid #000;border-radius:8px;overflow:hidden;
-  margin:0 auto;box-shadow:0 6px 20px rgba(0,0,0,.15)
-}
-.id-card .id-header{
-  background:linear-gradient(135deg,#145e2c,#1a7a3a);
-  padding:8px;text-align:center;color:#fff
-}
-.id-card .id-header h3{
-  font-size:13px;font-weight:800;letter-spacing:.5px;margin:0
-}
-.id-card .id-body{
-  display:flex;padding:12px;gap:12px;position:relative;
-  height:calc(100% - 32px)
-}
-.id-card .id-photo{
-  width:70px;height:90px;background:#f0f0f0;
-  border:2px solid #ccc;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  font-size:35px;border-radius:4px;overflow:hidden
-}
-.id-card .id-photo img{
-  width:100%;height:100%;object-fit:cover
-}
-.id-card .id-info-section{
-  flex:1;display:flex;flex-direction:column;position:relative
-}
-.id-card .id-info{font-size:11px;line-height:1.5}
-.id-card .id-info div{margin-bottom:4px}
-.id-card .id-info strong{font-weight:700;color:#1a7a3a}
-.id-card .id-qr-corner{
-  position:absolute;bottom:10px;right:0;width:55px;height:55px
-}
-.id-card .id-footer{
-  position:absolute;bottom:12px;left:12px;
-  font-size:9px;color:#666
-}
-#photo-preview{
-  max-width:200px;margin-top:8px;border:1px solid var(--border);
-  border-radius:var(--radius);overflow:hidden;display:none
-}
-#photo-preview img{width:100%;height:auto;display:block}
-#photo-preview.show{display:block}
 </style>
 </head>
 <body>
@@ -299,7 +251,7 @@ tr:hover td{background:var(--green-xlight)}
 <div id="modal-container"></div>
 
 <script>
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbwETIigSFUDrsafZzqAc4VWJZWOY8MrSjCMsSzqxqiGBS4ycTMgHZ8inCSrPc-cJ1Scjw/exec';
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbzpBwWM3a0oQfCCmDlD_puHYJ0ZUuIDIzQ0IuTMFldLXC9e9pNUgpvv-gQjEVX4_SSnEA/exec';
 
 const DEFAULT_PROGRAMS={
   'FSc Pre-Med':['Biology','Chemistry','Physics','English','Urdu','Islamic Studies'],
@@ -350,32 +302,11 @@ async function loadFromSheets(){
     const res=await fetch(SCRIPT_URL+'?t='+Date.now());
     const data=await res.json();
     if(data.success){
-      if(data.students&&data.students.length){
-        DB.students=data.students.map(s=>({
-          ...s,
-          roll:String(s.roll_no||s.roll||'').padStart(3,'0')
-        }));
-      }
-      if(data.teachers&&data.teachers.length){
-        DB.teachers=data.teachers.map(t=>({
-          ...t,
-          id:t.teacher_id||t.id,
-          subjects:typeof t.subjects==='string'?t.subjects.split(',').map(x=>x.trim()):(t.subjects||[])
-        }));
-      }
-      if(data.attendance&&data.attendance.length){
-        DB.attendance=data.attendance.map(a=>({
-          ...a,
-          date:a.date.split('T')[0],
-          status:a.status||'absent'
-        }));
-      }
-      if(data.programs&&Object.keys(data.programs).length){
-        DB.programs=data.programs;
-      }
-      if(data.teacherGroups&&data.teacherGroups.length){
-        DB.teacherGroups=data.teacherGroups;
-      }
+      if(data.students&&data.students.length)DB.students=data.students.map(s=>({...s,roll:String(s.roll_no||s.roll||'').padStart(3,'0')}));
+      if(data.teachers&&data.teachers.length)DB.teachers=data.teachers.map(t=>({...t,id:t.teacher_id||t.id,subjects:typeof t.subjects==='string'?t.subjects.split(',').map(x=>x.trim()):(t.subjects||[])}));
+      if(data.attendance&&data.attendance.length)DB.attendance=data.attendance;
+      if(data.programs&&Object.keys(data.programs).length)DB.programs=data.programs;
+      if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
       sheetsReady=true;
       document.getElementById('sheets-status').textContent='✓ Connected to Google Sheets';
       document.getElementById('sheets-status').style.color='#1b5e20';
@@ -436,7 +367,7 @@ function showApp(){
 
 function buildNav(){
   const tabs=currentRole==='admin'
-    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports'],['id-cards','🆔 ID Cards']]
+    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports']]
     :[['take-attendance','📷 Take Attendance'],['my-reports','📊 My Reports']];
   document.getElementById('nav-tabs').innerHTML=tabs.map(([id,lbl])=>`<button class="nav-tab" onclick="renderPage('${id}')" id="nav-${id}">${lbl}</button>`).join('');
 }
@@ -464,7 +395,7 @@ async function refreshAttendance(force=false){
 function renderPage(id){
   stopScanner();setActiveNav(id);
   const c=document.getElementById('main-content');
-  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'timetable':pageTimetable,'reports':pageReports,'id-cards':pageIDCards,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
+  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'timetable':pageTimetable,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
   if(id==='dashboard'||id==='reports'||id==='my-reports'){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading latest data...</p></div>`;
     refreshAttendance().then(()=>{
@@ -475,7 +406,6 @@ function renderPage(id){
   }
   if(pages[id])c.innerHTML=pages[id]();
   if(id==='qr-cards')setTimeout(renderQRCodes,100);
-  if(id==='id-cards')setTimeout(renderIDCardQRCodes,100);
   if(id==='take-attendance')initAttendancePage();
 }
 
@@ -572,27 +502,7 @@ function showAddStudent(){
       <div class="alert alert-info">Default subjects loaded. Uncheck to remove for this student.</div>
       <div id="subj-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px"></div>
     </div>
-    <div class="form-grid" style="margin-top:16px">
-      <div class="form-group"><label>Session (optional)</label><input type="text" id="ns-session" placeholder="2025-2026" value="2025-2026"></div>
-      <div class="form-group"><label>Phone (optional)</label><input type="text" id="ns-phone" placeholder="0300-1234567"></div>
-      <div class="form-group"><label>Blood Group (optional)</label>
-        <select id="ns-blood">
-          <option value="">--</option>
-          <option>A+</option><option>A-</option>
-          <option>B+</option><option>B-</option>
-          <option>AB+</option><option>AB-</option>
-          <option>O+</option><option>O-</option>
-        </select>
-      </div>
-    </div>
-    <div class="form-group" style="margin-top:16px"><label>Address (optional)</label>
-      <textarea id="ns-address" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit" rows="2" placeholder="Complete address"></textarea>
-    </div>
-    <div class="form-group" style="margin-top:16px"><label>Photo (optional)</label>
-      <input type="file" id="ns-photo" accept="image/*" onchange="previewPhoto(this)" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius)">
-      <div id="photo-preview"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:16px">
+    <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" id="add-student-btn" onclick="addStudent()">Add Student</button>
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
     </div>`);
@@ -613,36 +523,15 @@ async function addStudent(){
   const roll=document.getElementById('ns-roll').value.trim().padStart(3,'0');
   const name=document.getElementById('ns-name').value.trim();
   const prog=document.getElementById('ns-program').value;
-  const session=document.getElementById('ns-session') ? document.getElementById('ns-session').value.trim() : '';
-  const phone=document.getElementById('ns-phone') ? document.getElementById('ns-phone').value.trim() : '';
-  const blood=document.getElementById('ns-blood') ? document.getElementById('ns-blood').value : '';
-  const address=document.getElementById('ns-address') ? document.getElementById('ns-address').value.trim() : '';
-  
-  if(!roll||!name||!prog){showToast('Fill all required fields','error');return;}
+  if(!roll||!name||!prog){showToast('Fill all fields','error');return;}
   if(DB.students.find(s=>(s.roll||s.roll_no)===roll)){showToast('Roll number already exists','error');return;}
-  
   const checked=[...document.querySelectorAll('#subj-checkboxes input:checked')].map(c=>c.value);
   const defaults=DB.programs[prog]||[];
   const subjectsStr=JSON.stringify(checked)===JSON.stringify(defaults)?'':checked.join(',');
-  
+  const student={roll_no:roll,roll:roll,name,program:prog,subjects:subjectsStr,photo:''};
   const btn=document.getElementById('add-student-btn');
   btn.innerHTML='<span class="spinner"></span> Saving...';btn.disabled=true;
-  
   try{
-    let photo_url='';
-    const photoInput=document.getElementById('ns-photo');
-    if(photoInput&&photoInput.files.length>0){
-      const file=photoInput.files[0];
-      if(file.size<=100*1024){
-        photo_url=await fileToBase64(file);
-      }else{
-        showToast('Photo size exceeds 100KB limit','error');
-        btn.innerHTML='Add Student';btn.disabled=false;
-        return;
-      }
-    }
-    
-    const student={roll_no:roll,roll:roll,name,program:prog,subjects:subjectsStr,session,phone,blood_group:blood,address,photo_url};
     await sheetsCall({action:'saveStudent',student});
     DB.students.push(student);
     closeModal();showToast(`${name} added successfully`,'success');renderPage('students');
@@ -1494,325 +1383,6 @@ async function syncPending(){
   if(btn){btn.innerHTML='🔄 Sync Now';btn.disabled=false;}
   showToast(`✓ Synced ${success} sessions to Google Sheets`,'success');
 }
-
-// ══════════════════════════════════════════════════════════════════
-// ✅ NEW: HELPER FUNCTIONS FOR ID CARDS
-// ══════════════════════════════════════════════════════════════════
-
-function fileToBase64(file){
-  return new Promise((resolve,reject)=>{
-    const reader=new FileReader();
-    reader.onload=()=>resolve(reader.result);
-    reader.onerror=reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function previewPhoto(input){
-  const preview=document.getElementById('photo-preview');
-  if(input.files&&input.files[0]){
-    const reader=new FileReader();
-    reader.onload=function(e){
-      preview.innerHTML=`<img src="${e.target.result}" alt="Photo preview">`;
-      preview.classList.add('show');
-    };
-    reader.readAsDataURL(input.files[0]);
-  }else{
-    preview.innerHTML='';
-    preview.classList.remove('show');
-  }
-}
-
-function getYearFromProgram(program){
-  if(!program)return'1';
-  const prog=String(program).toLowerCase();
-  if(prog.includes('2nd')||prog.includes('second'))return'2';
-  return'1';
-}
-
-// ══════════════════════════════════════════════════════════════════
-// ✅ NEW: ID CARDS PAGE
-// ══════════════════════════════════════════════════════════════════
-
-function pageIDCards(){
-  const students=DB.students.sort((a,b)=>String(a.roll_no||a.roll).localeCompare(String(b.roll_no||b.roll)));
-  const programs=[...new Set(students.map(s=>s.program))].filter(Boolean);
-  
-  return`
-    <div class="page-header">
-      <h2>🆔 Student ID Cards</h2>
-      <p>View, print, and manage student ID cards with QR codes</p>
-    </div>
-    
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Filter & Actions</span>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-outline btn-sm" onclick="printAllCards()">🖨️ Print All</button>
-          <button class="btn btn-success btn-sm" onclick="exportCardsPDF()">📄 Export PDF</button>
-        </div>
-      </div>
-      
-      <div style="margin-bottom:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <div class="form-group" style="margin:0;flex:1;min-width:200px">
-          <label>Filter by Program</label>
-          <select id="program-filter" onchange="filterCards()" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px">
-            <option value="">All Programs (${students.length} students)</option>
-            ${programs.map(p=>{
-              const count=students.filter(s=>s.program===p).length;
-              return`<option value="${p}">${p} (${count})</option>`;
-            }).join('')}
-          </select>
-        </div>
-        <div style="color:var(--text3);font-size:12px">
-          <strong id="visible-count">${students.length}</strong> cards showing
-        </div>
-      </div>
-      
-      <div id="cards-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px">
-        ${students.map(s=>renderIDCard(s)).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function renderIDCard(student){
-  const roll=student.roll_no||student.roll;
-  const year=getYearFromProgram(student.program);
-  const yearText=year==='1'?'1st Year':'2nd Year';
-  const cardId=`card-${roll}`;
-  
-  return`
-    <div class="id-card-wrapper" data-program="${student.program||''}">
-      <div class="id-card" id="${cardId}">
-        <div class="id-header">
-          <h3>GOVT GRADUATE COLLEGE PHOOLNAGAR</h3>
-        </div>
-        <div class="id-body">
-          <div class="id-photo">
-            ${student.photo_url?`<img src="${student.photo_url}" alt="${student.name}">`:'👤'}
-          </div>
-          <div class="id-info-section">
-            <div class="id-info">
-              <div><strong>Name:</strong> ${student.name||'N/A'}</div>
-              <div><strong>Roll No:</strong> ${roll||'N/A'}</div>
-              <div><strong>Program:</strong> ${student.program||'N/A'}</div>
-              <div><strong>Year:</strong> ${yearText}</div>
-              <div><strong>Session:</strong> ${student.session||'2025-2026'}</div>
-              <div><strong>Phone:</strong> ${student.phone||'—'}</div>
-            </div>
-            <div class="id-qr-corner" id="qr-${roll}"></div>
-          </div>
-        </div>
-        <div class="id-footer">
-          Issued: ${new Date().toLocaleDateString('en-US',{month:'short',year:'numeric'})}
-        </div>
-      </div>
-      <div style="text-align:center;margin-top:10px">
-        <button class="btn btn-outline btn-sm" onclick="printSingleCard('${cardId}')">🖨️ Print</button>
-      </div>
-    </div>
-  `;
-}
-
-function renderIDCardQRCodes(){
-  DB.students.forEach(s=>{
-    const roll=s.roll_no||s.roll;
-    const year=getYearFromProgram(s.program);
-    const qrData=`${year}-${roll}`;
-    const elem=document.getElementById(`qr-${roll}`);
-    if(elem&&!elem.hasChildNodes()){
-      new QRCode(elem,{
-        text:qrData,
-        width:55,
-        height:55,
-        colorDark:'#145e2c',
-        colorLight:'#ffffff'
-      });
-    }
-  });
-}
-
-function filterCards(){
-  const filter=document.getElementById('program-filter').value;
-  const cards=document.querySelectorAll('.id-card-wrapper');
-  let visibleCount=0;
-  
-  cards.forEach(card=>{
-    if(!filter||card.dataset.program===filter){
-      card.style.display='block';
-      visibleCount++;
-    }else{
-      card.style.display='none';
-    }
-  });
-  
-  document.getElementById('visible-count').textContent=visibleCount;
-}
-
-function printSingleCard(cardId){
-  const card=document.getElementById(cardId);
-  if(!card)return;
-  
-  const printWindow=window.open('','_blank');
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Student ID Card</title>
-      <style>${getIDCardPrintStyles()}</style>
-    </head>
-    <body>
-      ${card.outerHTML}
-    </body>
-    </html>
-  `);
-  printWindow.document.close();
-  
-  setTimeout(()=>{
-    printWindow.print();
-  },500);
-}
-
-function printAllCards(){
-  const cards=Array.from(document.querySelectorAll('.id-card-wrapper'))
-    .filter(wrapper=>wrapper.style.display!=='none')
-    .map(wrapper=>wrapper.querySelector('.id-card'));
-  
-  if(cards.length===0){
-    showToast('No cards to print','error');
-    return;
-  }
-  
-  const printWindow=window.open('','_blank');
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>All Student ID Cards</title>
-      <style>${getIDCardPrintStyles()}</style>
-    </head>
-    <body>
-      ${cards.map(c=>c.outerHTML).join('')}
-    </body>
-    </html>
-  `);
-  printWindow.document.close();
-  
-  setTimeout(()=>{
-    printWindow.print();
-  },1000);
-}
-
-function exportCardsPDF(){
-  showToast('PDF export feature coming soon','info');
-}
-
-function getIDCardPrintStyles(){
-  return`
-    *{margin:0;padding:0;box-sizing:border-box;}
-    body{
-      font-family:'Segoe UI',Arial,sans-serif;
-      background:#fff;
-      padding:20px;
-    }
-    .id-card{
-      width:323px;
-      height:204px;
-      position:relative;
-      background:#fff;
-      border:2px solid #000;
-      border-radius:8px;
-      overflow:hidden;
-      margin:20px auto;
-      page-break-after:always;
-      box-shadow:none;
-    }
-    .id-card:last-child{
-      page-break-after:auto;
-    }
-    .id-header{
-      background:linear-gradient(135deg,#145e2c,#1a7a3a);
-      padding:8px;
-      text-align:center;
-      color:#fff;
-    }
-    .id-header h3{
-      font-size:13px;
-      font-weight:800;
-      letter-spacing:0.5px;
-      margin:0;
-    }
-    .id-body{
-      display:flex;
-      padding:12px;
-      gap:12px;
-      position:relative;
-      height:calc(100% - 32px);
-    }
-    .id-photo{
-      width:70px;
-      height:90px;
-      background:#f0f0f0;
-      border:2px solid #ccc;
-      flex-shrink:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:35px;
-      border-radius:4px;
-      overflow:hidden;
-    }
-    .id-photo img{
-      width:100%;
-      height:100%;
-      object-fit:cover;
-    }
-    .id-info-section{
-      flex:1;
-      display:flex;
-      flex-direction:column;
-      position:relative;
-    }
-    .id-info{
-      font-size:11px;
-      line-height:1.5;
-    }
-    .id-info div{
-      margin-bottom:4px;
-    }
-    .id-info strong{
-      font-weight:700;
-      color:#1a7a3a;
-    }
-    .id-qr-corner{
-      position:absolute;
-      bottom:10px;
-      right:0;
-      width:55px;
-      height:55px;
-    }
-    .id-qr-corner img{
-      width:100%;
-      height:100%;
-    }
-    .id-footer{
-      position:absolute;
-      bottom:12px;
-      left:12px;
-      font-size:9px;
-      color:#666;
-    }
-    @media print{
-      body{padding:0;}
-      .id-card{
-        margin:10mm auto;
-        box-shadow:none;
-      }
-    }
-  `;
-}
-
 window.addEventListener('load',()=>{
   // Clear any old queue items from previous buggy versions
   // Apps Script is now idempotent so queue is not needed for normal flow
