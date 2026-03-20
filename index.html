@@ -826,9 +826,7 @@ function pageTakeAttendance(){
         </select>
       </div>
       <div class="form-group" style="flex:1;min-width:140px"><label>Class Group</label>
-        <div id="att-group-display" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text2);background:var(--surface2);min-height:40px;display:flex;align-items:center">
-          Auto — select subject first
-        </div>
+        <div id="att-group-display" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;color:var(--text2);background:var(--surface2);min-height:40px;display:flex;align-items:center">Auto — select subject first</div>
         <input type="hidden" id="att-group" value="">
       </div>
       <div class="form-group" style="flex:1;min-width:160px"><label>Subject</label>
@@ -877,12 +875,15 @@ function loadStudentsForSubject(){
     if(autoGroups&&autoGroups.length){
       activeGroups=[...new Set(autoGroups.flatMap(g=>getGroupPrograms(g)||[]))];
       const groupEl=document.getElementById('att-group');
+      const groupDisplay=document.getElementById('att-group-display');
       if(groupEl){
         if(autoGroups.length===1){
           groupEl.value=autoGroups[0];
           manualGroup=autoGroups[0];
+          if(groupDisplay)groupDisplay.textContent=autoGroups[0]==='science'?'FSc + ICS + ICom':'FA + FA-IT';
         } else {
           groupEl.value='';
+          if(groupDisplay)groupDisplay.textContent='All Students (Both Groups)';
         }
       }
     }
@@ -1188,7 +1189,7 @@ function pageMyReports(){
   const teacher=currentUser.teacher;
   const tid=teacher.id||teacher.teacher_id;
   const myRecs=DB.attendance.filter(a=>String(a.teacher_id)===String(tid));
-  const sessions=[...new Set(myRecs.map(a=>a.date+'|'+a.subject))];
+  const sessions=[...new Set(myRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject))];
   return`<div class="page-header"><h2>My Sessions</h2><p>Your attendance history</p></div>
   <div class="stats-grid">
     <div class="stat-card sc-green"><div class="stat-label">Sessions Taken</div><div class="stat-value">${sessions.length}</div></div>
@@ -1199,7 +1200,7 @@ function pageMyReports(){
     <tr><th>Date</th><th>Subject</th><th>Present</th><th>Absent</th><th>Total</th></tr>
     ${sessions.map(key=>{
       const[date,subject]=key.split('|');
-      const recs=myRecs.filter(a=>a.date===date&&a.subject===subject);
+      const recs=myRecs.filter(a=>String(a.date).split('T')[0]===date&&a.subject===subject);
       const p=recs.filter(a=>a.status==='present').length;
       return`<tr><td>${formatDate(date)}</td><td><strong>${subject}</strong></td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td>${recs.length}</td></tr>`;
     }).join('')}
@@ -1232,10 +1233,7 @@ function showAddTimetableRow(){
     <div class="form-group"><label>Teacher</label><select id="tt-teacher">${teacherOptions}</select></div>
     <div class="form-group"><label>Subject</label><select id="tt-subject">${subjOptions}</select></div>
     <div class="form-group"><label>Year</label>
-      <select id="tt-year">
-        <option value="1st Year">1st Year</option>
-        <option value="2nd Year">2nd Year</option>
-      </select>
+      <select id="tt-year"><option value="1st Year">1st Year</option><option value="2nd Year">2nd Year</option></select>
     </div>
     <div class="form-group"><label>Group</label>
       <select id="tt-group">
@@ -1363,28 +1361,20 @@ function showToast(msg,type=''){
 function todayStr(){return new Date().toISOString().split('T')[0];}
 function formatDate(d){
   if(!d)return '';
-  return new Date(d+'T00:00:00').toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'});
+  const clean=String(d).split('T')[0];
+  if(!clean||clean.length<8)return '—';
+  try{return new Date(clean+'T00:00:00').toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'});}
+  catch(e){return clean;}
 }
 function formatTime(t){
   if(!t)return '—';
   const s=String(t);
   if(s.includes('1899-12-30T')){
     const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
-    if(parts.length>=2){
-      let h=parseInt(parts[0]);const m=parts[1];
-      const ampm=h>=12?'PM':'AM';
-      h=h%12||12;
-      return`${h}:${m} ${ampm}`;
-    }
+    if(parts.length>=2){let h=parseInt(parts[0]);const m=parts[1];const ampm=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m} ${ampm}`;}
   }
   if(s.includes('AM')||s.includes('PM'))return s;
-  if(s.includes(':')&&s.length<=5){
-    const parts=s.split(':');
-    let h=parseInt(parts[0]);const m=parts[1];
-    const ampm=h>=12?'PM':'AM';
-    h=h%12||12;
-    return`${h}:${m} ${ampm}`;
-  }
+  if(s.includes(':')&&s.length<=5){const parts=s.split(':');let h=parseInt(parts[0]);const m=parts[1];const ampm=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m} ${ampm}`;}
   return s;
 }
 // ── OFFLINE SYNC ──
