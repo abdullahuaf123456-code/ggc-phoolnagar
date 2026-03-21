@@ -158,10 +158,28 @@ tr:hover td{background:var(--green-xlight)}
   .dash-hero-date{margin-left:0}
 }
 @media print{
-  .topbar,.nav-tabs,.sync-bar,.no-print{display:none!important}
+  .topbar,.nav-tabs,.sync-bar,.no-print,.id-card-controls{display:none!important}
   .qr-grid{grid-template-columns:repeat(4,1fr)}
-  body{background:#fff}
+  .id-card-grid{grid-template-columns:repeat(2,1fr)}
+  body{background:#fff;padding:0}
+  .content{padding:0}
+  .id-card{box-shadow:none;border:1.5px solid #000}
 }
+
+/* ── ID CARDS ── */
+.id-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(323px,1fr));gap:20px}
+.id-card{width:323px;height:204px;position:relative;background:#fff;border:2px solid #000;border-radius:8px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.15);page-break-inside:avoid}
+.id-card-header{background:linear-gradient(135deg,#145e2c,#1a7a3a);padding:7px 8px;text-align:center;color:#fff}
+.id-card-header h3{font-size:11px;font-weight:800;letter-spacing:.4px;margin:0;text-transform:uppercase}
+.id-card-body{display:flex;padding:10px;gap:10px;height:calc(100% - 30px)}
+.id-card-photo{width:68px;height:88px;background:#f0f0f0;border:1.5px solid #ccc;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:32px;border-radius:3px;overflow:hidden}
+.id-card-photo img{width:100%;height:100%;object-fit:cover}
+.id-card-info{flex:1;position:relative;display:flex;flex-direction:column}
+.id-card-fields{font-size:10px;line-height:1.6}
+.id-card-fields div{margin-bottom:2px}
+.id-card-fields strong{font-weight:700;color:#1a7a3a}
+.id-card-qr{position:absolute;bottom:8px;right:0;width:54px;height:54px}
+.id-card-footer{position:absolute;bottom:8px;left:10px;font-size:8px;color:#888}
 </style>
 </head>
 <body>
@@ -367,7 +385,7 @@ function showApp(){
 
 function buildNav(){
   const tabs=currentRole==='admin'
-    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports']]
+    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['id-cards','🪪 ID Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports']]
     :[['take-attendance','📷 Take Attendance'],['my-reports','📊 My Reports']];
   document.getElementById('nav-tabs').innerHTML=tabs.map(([id,lbl])=>`<button class="nav-tab" onclick="renderPage('${id}')" id="nav-${id}">${lbl}</button>`).join('');
 }
@@ -377,24 +395,26 @@ function setActiveNav(id){
   const el=document.getElementById('nav-'+id);if(el)el.classList.add('active');
 }
 
-let lastRefresh=0;
-async function refreshAttendance(force=false){
-  const now=Date.now();
-  if(!force&&(now-lastRefresh)<5*60*1000)return;
+async function refreshAttendance(){
   try{
-    const res=await fetch(SCRIPT_URL+'?t='+now);
+    const res=await fetch(SCRIPT_URL+'?t='+Date.now());
     const data=await res.json();
     if(data.success){
-      if(data.attendance&&data.attendance.length)DB.attendance=data.attendance;
-      if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
-      lastRefresh=now;
+      // Always trust Sheets as source of truth
+      if(data.attendance&&data.attendance.length){
+        DB.attendance=data.attendance;
+      }
+      // Also refresh teacherGroups in case updated
+      if(data.teacherGroups&&data.teacherGroups.length){
+        DB.teacherGroups=data.teacherGroups;
+      }
     }
   }catch(e){}
 }
 function renderPage(id){
   stopScanner();setActiveNav(id);
   const c=document.getElementById('main-content');
-  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'timetable':pageTimetable,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
+  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'id-cards':pageIDCards,'timetable':pageTimetable,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
   if(id==='dashboard'||id==='reports'||id==='my-reports'){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading latest data...</p></div>`;
     refreshAttendance().then(()=>{
@@ -405,6 +425,7 @@ function renderPage(id){
   }
   if(pages[id])c.innerHTML=pages[id]();
   if(id==='qr-cards')setTimeout(renderQRCodes,100);
+  if(id==='id-cards')setTimeout(renderIDCards,100);
   if(id==='take-attendance')initAttendancePage();
 }
 
@@ -513,17 +534,11 @@ function showAddStudent(){
       <div id="subj-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:16px"></div>
     </div>
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Optional Information</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Optional</div>
       <div class="form-grid">
-        <div class="form-group" style="margin-bottom:10px"><label>Phone Number</label><input type="text" id="ns-phone" placeholder="e.g. 0300-1234567"></div>
+        <div class="form-group" style="margin-bottom:10px"><label>Phone</label><input type="text" id="ns-phone" placeholder="0300-1234567"></div>
         <div class="form-group" style="margin-bottom:10px"><label>Blood Group</label>
-          <select id="ns-blood">
-            <option value="">Not provided</option>
-            <option value="A+">A+</option><option value="A-">A-</option>
-            <option value="B+">B+</option><option value="B-">B-</option>
-            <option value="AB+">AB+</option><option value="AB-">AB-</option>
-            <option value="O+">O+</option><option value="O-">O-</option>
-          </select>
+          <select id="ns-blood"><option value="">Not provided</option><option>A+</option><option>A-</option><option>B+</option><option>B-</option><option>AB+</option><option>AB-</option><option>O+</option><option>O-</option></select>
         </div>
       </div>
       <div class="form-group" style="margin-bottom:0"><label>Address</label><input type="text" id="ns-address" placeholder="Home address (optional)"></div>
@@ -583,9 +598,9 @@ function editStudent(roll){
           ${Object.keys(DB.programs).map(p=>`<option ${p===s.program?'selected':''}>${p}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Session ★</label>
+      <div class="form-group"><label>Session</label>
         <select id="es-session">
-          <option value="">Select session...</option>
+          <option value="">Select...</option>
           <option value="2024-2025" ${s.session==='2024-2025'?'selected':''}>2024-2025</option>
           <option value="2025-2026" ${s.session==='2025-2026'?'selected':''}>2025-2026</option>
           <option value="2026-2027" ${s.session==='2026-2027'?'selected':''}>2026-2027</option>
@@ -600,9 +615,9 @@ function editStudent(roll){
         </label>`).join('')}
     </div>
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Optional Information</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px">Optional</div>
       <div class="form-grid">
-        <div class="form-group" style="margin-bottom:10px"><label>Phone Number</label><input type="text" id="es-phone" value="${s.phone||''}" placeholder="e.g. 0300-1234567"></div>
+        <div class="form-group" style="margin-bottom:10px"><label>Phone</label><input type="text" id="es-phone" value="${s.phone||''}" placeholder="0300-1234567"></div>
         <div class="form-group" style="margin-bottom:10px"><label>Blood Group</label>
           <select id="es-blood">
             <option value="">Not provided</option>
@@ -617,7 +632,14 @@ function editStudent(roll){
           </select>
         </div>
       </div>
-      <div class="form-group" style="margin-bottom:0"><label>Address</label><input type="text" id="es-address" value="${s.address||''}" placeholder="Home address (optional)"></div>
+      <div class="form-group"><label>Address</label><input type="text" id="es-address" value="${s.address||''}" placeholder="Home address (optional)"></div>
+      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Photo for ID Card</div>
+        ${s.photo?`<img src="${s.photo}" style="width:55px;height:70px;object-fit:cover;border-radius:3px;border:1px solid var(--border);margin-bottom:8px;display:block">`:'<div style="margin-bottom:8px;color:var(--text3);font-size:11px">No photo yet</div>'}
+        <input type="file" id="es-photo" accept="image/*" style="font-size:12px;width:100%" onchange="previewPhoto(this)">
+        <div id="photo-preview" style="margin-top:6px"></div>
+        <button class="btn btn-outline btn-sm" onclick="clearPhoto('${roll}')" style="margin-top:6px;font-size:11px">🗑 Clear Photo</button>
+      </div>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-primary btn-sm" id="save-student-btn" onclick="saveStudent('${roll}')">Save</button>
@@ -639,14 +661,16 @@ function updateEditSubjects(roll){
 async function saveStudent(roll){
   const s=DB.students.find(x=>(x.roll||x.roll_no)===roll);
   s.name=document.getElementById('es-name').value.trim();
-  s.father_name=document.getElementById('es-father').value.trim();
+  s.father_name=document.getElementById('es-father')?.value.trim()||s.father_name||'';
   s.program=document.getElementById('es-program').value;
-  s.session=document.getElementById('es-session').value;
+  s.session=document.getElementById('es-session')?.value||s.session||'';
   const checked=[...document.querySelectorAll('#edit-subj-checkboxes input:checked')].map(c=>c.value);
   s.subjects=checked.join(',');
-  s.phone=document.getElementById('es-phone').value.trim();
-  s.blood_group=document.getElementById('es-blood').value;
-  s.address=document.getElementById('es-address').value.trim();
+  s.phone=document.getElementById('es-phone')?.value.trim()||s.phone||'';
+  s.blood_group=document.getElementById('es-blood')?.value||s.blood_group||'';
+  s.address=document.getElementById('es-address')?.value.trim()||s.address||'';
+  const photoInput=document.getElementById('es-photo');
+  if(photoInput&&photoInput.dataset.base64){s.photo=photoInput.dataset.base64;}
   const btn=document.getElementById('save-student-btn');
   btn.innerHTML='<span class="spinner"></span>';btn.disabled=true;
   try{
@@ -1207,9 +1231,84 @@ function pageMyReports(){
   </table></div>`}`;
 }
 
+function previewPhoto(input){
+  if(!input.files||!input.files[0])return;
+  const file=input.files[0];
+  if(file.size>600000){showToast('Photo too large — max 600KB','error');input.value='';return;}
+  const reader=new FileReader();
+  reader.onload=e=>{
+    input.dataset.base64=e.target.result;
+    const prev=document.getElementById('photo-preview');
+    if(prev)prev.innerHTML=`<img src="${e.target.result}" style="width:55px;height:70px;object-fit:cover;border-radius:3px;border:1px solid var(--border)">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearPhoto(roll){
+  if(!confirm('Remove photo for this student?'))return;
+  const s=DB.students.find(x=>(x.roll||x.roll_no)===roll);
+  if(!s)return;
+  s.photo='';
+  sheetsCall({action:'saveStudent',student:{...s,roll_no:roll}});
+  showToast('Photo removed','success');
+  editStudent(roll);
+}
+
+function pageIDCards(){
+  return`<div class="page-header id-card-controls" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div><h2>🪪 ID Cards</h2><p>Auto-generated from student profiles — upload photos via Edit Student.</p></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <select id="id-filter-prog" onchange="renderIDCards()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;outline:none">
+        <option value="">All Programs</option>
+        ${Object.keys(DB.programs).map(p=>`<option>${p}</option>`).join('')}
+      </select>
+      <button class="btn btn-outline btn-sm no-print" onclick="renderIDCards()">🔄 Refresh</button>
+      <button class="btn btn-primary btn-sm no-print" onclick="window.print()">🖨️ Print Cards</button>
+    </div>
+  </div>
+  <div class="alert alert-info id-card-controls" style="margin-bottom:16px">To add photos: Students tab → Edit student → Photo for ID Card section. After printing you can clear photos to save space.</div>
+  <div class="id-card-grid" id="id-card-grid"></div>`;
+}
+
+function renderIDCards(){
+  const prog=document.getElementById('id-filter-prog')?.value||'';
+  const students=prog?DB.students.filter(s=>s.program===prog):DB.students;
+  const grid=document.getElementById('id-card-grid');if(!grid)return;
+  grid.innerHTML=students.map(s=>{
+    const qrVal=getQRValue(s);
+    const qrId='idqr-'+qrVal.replace('-','_');
+    const programShort=(s.program||'').replace(' - 1st Year','').replace(' - 2nd Year','').replace('1st Year','').replace('2nd Year','').trim();
+    const yearLabel=(s.program||'').includes('1st Year')?'1st Year':'2nd Year';
+    const photoHtml=s.photo?`<img src="${s.photo}" style="width:100%;height:100%;object-fit:cover">`:`<span style="font-size:32px">👤</span>`;
+    return`<div class="id-card">
+      <div class="id-card-header"><h3>Govt Graduate College Phoolnagar</h3></div>
+      <div class="id-card-body">
+        <div class="id-card-photo">${photoHtml}</div>
+        <div class="id-card-info">
+          <div class="id-card-fields">
+            <div><strong>Name:</strong> ${s.name||'—'}</div>
+            <div><strong>Roll No:</strong> ${s.roll||s.roll_no}</div>
+            <div><strong>Program:</strong> ${programShort}</div>
+            <div><strong>Year:</strong> ${yearLabel}</div>
+            <div><strong>Session:</strong> ${s.session||'—'}</div>
+            <div><strong>Phone:</strong> ${s.phone||'—'}</div>
+          </div>
+          <div class="id-card-qr" id="${qrId}"></div>
+        </div>
+      </div>
+      <div class="id-card-footer">Issued: ${new Date().toLocaleDateString('en-PK',{month:'short',year:'numeric'})}</div>
+    </div>`;
+  }).join('');
+  students.forEach(s=>{
+    const qrVal=getQRValue(s);
+    const qrId='idqr-'+qrVal.replace('-','_');
+    try{new QRCode(document.getElementById(qrId),{text:qrVal,width:54,height:54,colorDark:'#145e2c',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});}catch(e){}
+  });
+}
+
 function pageTimetable(){
   return`<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-    <div><h2>🗓️ Timetable Manager</h2><p>Manage teacher-group assignments. Changes save to Google Sheets.</p></div>
+    <div><h2>🗓️ Timetable Manager</h2><p>Manage teacher-group assignments.</p></div>
     <button class="btn btn-primary btn-sm" onclick="showAddTimetableRow()">+ Add Assignment</button>
   </div>
   <div class="alert alert-info" style="margin-bottom:16px">Group assignments control which students each teacher sees when taking attendance.</div>
@@ -1232,14 +1331,9 @@ function showAddTimetableRow(){
   showModal('Add Teacher Assignment',`
     <div class="form-group"><label>Teacher</label><select id="tt-teacher">${teacherOptions}</select></div>
     <div class="form-group"><label>Subject</label><select id="tt-subject">${subjOptions}</select></div>
-    <div class="form-group"><label>Year</label>
-      <select id="tt-year"><option value="1st Year">1st Year</option><option value="2nd Year">2nd Year</option></select>
-    </div>
+    <div class="form-group"><label>Year</label><select id="tt-year"><option value="1st Year">1st Year</option><option value="2nd Year">2nd Year</option></select></div>
     <div class="form-group"><label>Group</label>
-      <select id="tt-group">
-        <option value="science">FSc + ICS + ICom (Science)</option>
-        <option value="arts">FA + FA-IT (Arts)</option>
-      </select>
+      <select id="tt-group"><option value="science">FSc+ICS+ICom (Science)</option><option value="arts">FA+FA-IT (Arts)</option></select>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" onclick="saveTimetableRow()">Save</button>
@@ -1254,7 +1348,7 @@ async function saveTimetableRow(){
   const group=document.getElementById('tt-group').value;
   const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
   const exists=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&tg.year===year&&tg.group===group);
-  if(exists){showToast('This assignment already exists','error');return;}
+  if(exists){showToast('Already exists','error');return;}
   DB.teacherGroups.push(newRow);
   await sheetsCall({action:'saveTeacherGroup',row:newRow});
   closeModal();showToast('Assignment added','success');renderPage('timetable');
@@ -1268,16 +1362,10 @@ function editTimetableRow(idx){
     <div class="form-group"><label>Teacher</label><select id="tt-teacher">${teacherOptions}</select></div>
     <div class="form-group"><label>Subject</label><select id="tt-subject">${subjOptions}</select></div>
     <div class="form-group"><label>Year</label>
-      <select id="tt-year">
-        <option value="1st Year" ${tg.year==='1st Year'?'selected':''}>1st Year</option>
-        <option value="2nd Year" ${tg.year==='2nd Year'?'selected':''}>2nd Year</option>
-      </select>
+      <select id="tt-year"><option value="1st Year" ${tg.year==='1st Year'?'selected':''}>1st Year</option><option value="2nd Year" ${tg.year==='2nd Year'?'selected':''}>2nd Year</option></select>
     </div>
     <div class="form-group"><label>Group</label>
-      <select id="tt-group">
-        <option value="science" ${tg.group==='science'?'selected':''}>FSc + ICS + ICom (Science)</option>
-        <option value="arts" ${tg.group==='arts'?'selected':''}>FA + FA-IT (Arts)</option>
-      </select>
+      <select id="tt-group"><option value="science" ${tg.group==='science'?'selected':''}>FSc+ICS+ICom</option><option value="arts" ${tg.group==='arts'?'selected':''}>FA+FA-IT</option></select>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" onclick="updateTimetableRow(${idx})">Update</button>
@@ -1294,14 +1382,14 @@ async function updateTimetableRow(idx){
   const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
   DB.teacherGroups[idx]=newRow;
   await sheetsCall({action:'updateTeacherGroup',oldRow,newRow});
-  closeModal();showToast('Assignment updated','success');renderPage('timetable');
+  closeModal();showToast('Updated','success');renderPage('timetable');
 }
 async function deleteTimetableRow(idx){
   if(!confirm('Delete this assignment?'))return;
   const row=DB.teacherGroups[idx];
   DB.teacherGroups.splice(idx,1);
   await sheetsCall({action:'deleteTeacherGroup',row});
-  showToast('Assignment deleted','success');renderPage('timetable');
+  showToast('Deleted','success');renderPage('timetable');
 }
 function showSubjectReport(roll){
   const s=DB.students.find(x=>String(x.roll||x.roll_no).padStart(3,'0')===String(roll).padStart(3,'0'));
@@ -1369,10 +1457,7 @@ function formatDate(d){
 function formatTime(t){
   if(!t)return '—';
   const s=String(t);
-  if(s.includes('1899-12-30T')){
-    const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
-    if(parts.length>=2){let h=parseInt(parts[0]);const m=parts[1];const ampm=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m} ${ampm}`;}
-  }
+  if(s.includes('1899-12-30T')){const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');if(parts.length>=2){let h=parseInt(parts[0]);const m=parts[1];const ampm=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m} ${ampm}`;}}
   if(s.includes('AM')||s.includes('PM'))return s;
   if(s.includes(':')&&s.length<=5){const parts=s.split(':');let h=parseInt(parts[0]);const m=parts[1];const ampm=h>=12?'PM':'AM';h=h%12||12;return`${h}:${m} ${ampm}`;}
   return s;
