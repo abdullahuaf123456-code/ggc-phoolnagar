@@ -180,6 +180,19 @@ tr:hover td{background:var(--green-xlight)}
 .id-card-fields strong{font-weight:700;color:#1a7a3a}
 .id-card-qr{position:absolute;bottom:8px;right:0;width:54px;height:54px}
 .id-card-footer{position:absolute;bottom:8px;left:10px;font-size:8px;color:#888}
+
+/* ── MARKS & PUNCTUALITY ── */
+.marks-test-card{background:var(--gold-light);border:1.5px solid var(--gold-mid);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+.marks-test-card.december{background:var(--green-light);border-color:var(--green-mid)}
+.marks-test-card.sendup{background:var(--surface2);border-color:var(--border)}
+.marks-input{width:60px;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;text-align:center;outline:none}
+.marks-input:focus{border-color:var(--green)}
+.perf-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--radius-lg);padding:18px;box-shadow:var(--shadow)}
+.perf-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+.perf-metric{margin-bottom:10px}
+.perf-metric-label{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px}
+.perf-metric-value{font-size:13px;font-weight:600;color:var(--text)}
+.punct-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
 </style>
 </head>
 <body>
@@ -282,7 +295,7 @@ const DEFAULT_PROGRAMS={
 
 let DB={
   programs:{...DEFAULT_PROGRAMS},
-  students:[],teachers:[],attendance:[],teacherGroups:[],
+  students:[],teachers:[],attendance:[],teacherGroups:[],marks:[],
   admin:{username:'principal',password:'admin123'},
   getStudentSubjects(s){
     if(s.subjects&&s.subjects!==''){
@@ -325,6 +338,7 @@ async function loadFromSheets(){
       if(data.attendance&&data.attendance.length)DB.attendance=data.attendance;
       if(data.programs&&Object.keys(data.programs).length)DB.programs=data.programs;
       if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
+      if(data.marks&&data.marks.length)DB.marks=data.marks;
       sheetsReady=true;
       document.getElementById('sheets-status').textContent='✓ Connected to Google Sheets';
       document.getElementById('sheets-status').style.color='#1b5e20';
@@ -385,7 +399,7 @@ function showApp(){
 
 function buildNav(){
   const tabs=currentRole==='admin'
-    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['id-cards','🪪 ID Cards'],['timetable','🗓️ Timetable'],['reports','📈 Reports']]
+    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['id-cards','🪪 ID Cards'],['timetable','🗓️ Timetable'],['marks','📝 Marks'],['punctuality','⏰ Punctuality'],['reports','📈 Reports']]
     :[['take-attendance','📷 Take Attendance'],['my-reports','📊 My Reports']];
   document.getElementById('nav-tabs').innerHTML=tabs.map(([id,lbl])=>`<button class="nav-tab" onclick="renderPage('${id}')" id="nav-${id}">${lbl}</button>`).join('');
 }
@@ -414,7 +428,7 @@ async function refreshAttendance(){
 function renderPage(id){
   stopScanner();setActiveNav(id);
   const c=document.getElementById('main-content');
-  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'id-cards':pageIDCards,'timetable':pageTimetable,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
+  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'id-cards':pageIDCards,'timetable':pageTimetable,'marks':pageMarks,'punctuality':pagePunctuality,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
   if(id==='dashboard'||id==='reports'||id==='my-reports'){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading latest data...</p></div>`;
     refreshAttendance().then(()=>{
@@ -431,8 +445,10 @@ function renderPage(id){
 
 function pageDashboard(){
   const today=todayStr();
-  const todayRecs=DB.attendance.filter(a=>String(a.date||'').split('T')[0]===today);
-  const presentToday=new Set(todayRecs.filter(a=>a.status==='present').map(a=>a.roll_no)).size;
+  const sevenDaysAgo=new Date(Date.now()-7*24*60*60*1000).toISOString().split('T')[0];
+  const todayRecs=DB.attendance.filter(a=>{const d=String(a.date||'').split('T')[0];return d>=sevenDaysAgo;});
+  const todayOnly=DB.attendance.filter(a=>String(a.date||'').split('T')[0]===today);
+  const presentToday=new Set(todayOnly.filter(a=>a.status==='present').map(a=>a.roll_no)).size;
   const below75=DB.students.filter(s=>{const st=DB.getAttendanceStats(s.roll||s.roll_no);return st.total>0&&st.pct<75;}).length;
   const sessions=new Set(DB.attendance.map(a=>a.date+'|'+a.subject)).size;
   return`<div class="dash-hero">
@@ -453,14 +469,15 @@ function pageDashboard(){
   ${below75>0?`<div class="alert alert-warning">⚠️ ${below75} student(s) below 75%. Check Reports tab.</div>`:''}
   ${!sheetsReady?`<div class="alert alert-warning">⚠️ Not connected to Google Sheets.</div>`:''}
   <div class="card">
-    <div class="card-header"><span class="card-title">Today's Sessions</span><span class="badge badge-gray">${formatDate(today)}</span></div>
-    ${todayRecs.length===0?`<p style="color:var(--text2);font-size:13px;text-align:center;padding:20px 0">No attendance recorded today yet.</p>`:`
+    <div class="card-header"><span class="card-title">Recent Sessions</span><span class="badge badge-gray">Last 7 Days</span></div>
+    ${todayRecs.length===0?`<p style="color:var(--text2);font-size:13px;text-align:center;padding:20px 0">No attendance recorded in last 7 days.</p>`:`
     <div class="table-wrap"><table>
-      <tr><th>Subject</th><th>Teacher</th><th>Present</th><th>Absent</th><th>Time</th></tr>
-      ${[...new Set(todayRecs.map(a=>a.subject))].map(subj=>{
-        const recs=todayRecs.filter(a=>a.subject===subj);
+      <tr><th>Date</th><th>Subject</th><th>Teacher</th><th>Present</th><th>Absent</th><th>Time</th></tr>
+      ${[...new Set(todayRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')))].sort((a,b)=>b.localeCompare(a)).map(key=>{
+        const[d,subj,tid]=key.split('|');
+        const recs=todayRecs.filter(a=>String(a.date).split('T')[0]===d&&a.subject===subj&&String(a.teacher_id||'')===tid);
         const p=recs.filter(a=>a.status==='present').length;
-        return`<tr><td><strong>${subj}</strong></td><td>${recs[0]?.teacher_name||'—'}</td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td style="color:var(--text2)">${formatTime(recs[0]?.time)}</td></tr>`;
+        return`<tr><td style="color:var(--text2);font-size:12px">${formatDate(d)}</td><td><strong>${subj}</strong></td><td>${recs[0]?.teacher_name||'—'}</td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td style="color:var(--text2)">${formatTime(recs[0]?.time)}</td></tr>`;
       }).join('')}
     </table></div>`}
   </div>`;
@@ -1391,6 +1408,327 @@ async function deleteTimetableRow(idx){
   await sheetsCall({action:'deleteTeacherGroup',row});
   showToast('Deleted','success');renderPage('timetable');
 }
+
+// ══════════════════════════════════════════
+// MARKS SYSTEM
+// ══════════════════════════════════════════
+function pageMarks(){
+  const testTypes=['Monthly Test','December Test','Send-up Exam'];
+  const months=['September 2025','October 2025','November 2025','December 2025','January 2026','February 2026','March 2026'];
+  return`<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div><h2>📝 Examination Marks</h2><p>Enter and view test marks for Monthly, December, and Send-up exams</p></div>
+  </div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header"><span class="card-title">Enter Marks</span></div>
+    <div class="form-grid" style="margin-bottom:16px">
+      <div class="form-group"><label>Test Type ★</label>
+        <select id="mk-type">
+          ${testTypes.map(t=>`<option>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Month / Period ★</label>
+        <select id="mk-month">
+          ${months.map(m=>`<option>${m}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Program ★</label>
+        <select id="mk-program" onchange="loadMarksEntry()">
+          <option value="">Select program...</option>
+          ${Object.keys(DB.programs).map(p=>`<option>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Total Marks per Subject</label>
+        <input type="number" id="mk-total" value="50" min="1" max="200" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;outline:none">
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="loadMarksEntry()" style="width:auto">Load Students →</button>
+  </div>
+  <div id="marks-entry-area"></div>
+  <div style="height:40px"></div>
+  <div class="card" style="margin-top:8px">
+    <div class="card-header"><span class="card-title">View Student Report</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <input type="text" id="mk-search" placeholder="Search student name or roll..." style="flex:1;min-width:180px;padding:9px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;outline:none">
+      <button class="btn btn-primary btn-sm" onclick="showMarksReport()">View Report</button>
+    </div>
+  </div>`;
+}
+
+function loadMarksEntry(){
+  const prog=document.getElementById('mk-program')?.value;
+  if(!prog){document.getElementById('marks-entry-area').innerHTML='';return;}
+  const students=DB.students.filter(s=>s.program===prog);
+  const subjects=DB.programs[prog]||[];
+  const testType=document.getElementById('mk-type')?.value||'Monthly Test';
+  const month=document.getElementById('mk-month')?.value||'';
+  const total=document.getElementById('mk-total')?.value||'50';
+  if(!students.length){document.getElementById('marks-entry-area').innerHTML='<div class="alert alert-info">No students in this program.</div>';return;}
+  document.getElementById('marks-entry-area').innerHTML=`
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">${testType} — ${month} — ${prog}</span>
+        <button class="btn btn-success btn-sm" id="save-marks-btn" onclick="saveMarksEntry('${prog}','${testType}','${month}','${total}')">💾 Save All Marks</button>
+      </div>
+      <div class="table-wrap"><table id="marks-table">
+        <tr>
+          <th>Roll</th><th>Name</th>
+          ${subjects.map(s=>`<th style="min-width:80px">${s}<br><span style="font-size:10px;font-weight:400">/ ${total}</span></th>`).join('')}
+          <th>Total</th><th>%</th><th>Grade</th>
+        </tr>
+        ${students.map(s=>{
+          const roll=String(s.roll||s.roll_no).padStart(3,'0');
+          // Load existing marks if any
+          const existing={};
+          DB.marks.filter(m=>String(m.roll_no).padStart(3,'0')===roll&&m.test_type===testType&&m.month_year===month).forEach(m=>{existing[m.subject]=m.obtained;});
+          return`<tr id="mkrow-${roll}">
+            <td><span class="badge badge-gold">${roll}</span></td>
+            <td style="font-size:12px"><strong>${s.name}</strong></td>
+            ${subjects.map(subj=>`<td><input class="marks-input" type="number" min="0" max="${total}" id="mk-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" value="${existing[subj]||''}" oninput="updateRowTotal('${roll}','${prog}','${total}')" placeholder="—"></td>`).join('')}
+            <td id="mktotal-${roll}" style="font-weight:700">—</td>
+            <td id="mkpct-${roll}" style="font-weight:700">—</td>
+            <td id="mkgrade-${roll}">—</td>
+          </tr>`;
+        }).join('')}
+      </table></div>
+    </div>`;
+  // Calculate totals for rows with existing data
+  students.forEach(s=>{
+    const roll=String(s.roll||s.roll_no).padStart(3,'0');
+    updateRowTotal(roll,prog,total);
+  });
+}
+
+function updateRowTotal(roll,prog,total){
+  const subjects=DB.programs[prog]||[];
+  let sum=0,count=0;
+  subjects.forEach(subj=>{
+    const inp=document.getElementById('mk-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
+    if(inp&&inp.value!==''){sum+=parseFloat(inp.value)||0;count++;}
+  });
+  const maxTotal=parseInt(total)*subjects.length;
+  const obtained=sum;
+  const pct=count>0?Math.round(obtained/(parseInt(total)*count)*100):0;
+  const grade=pct>=90?'A+':pct>=80?'A':pct>=70?'B':pct>=60?'C':pct>=50?'D':'F';
+  const gradeColor=pct>=70?'badge-green':pct>=50?'badge-amber':'badge-red';
+  const totalEl=document.getElementById('mktotal-'+roll);
+  const pctEl=document.getElementById('mkpct-'+roll);
+  const gradeEl=document.getElementById('mkgrade-'+roll);
+  if(totalEl)totalEl.textContent=count>0?obtained+'/'+(parseInt(total)*count):'—';
+  if(pctEl){pctEl.textContent=count>0?pct+'%':'—';pctEl.style.color=pct>=75?'var(--green)':pct>=50?'var(--amber)':'var(--red)';}
+  if(gradeEl)gradeEl.innerHTML=count>0?`<span class="badge ${gradeColor}">${grade}</span>`:'—';
+}
+
+async function saveMarksEntry(prog,testType,month,total){
+  const subjects=DB.programs[prog]||[];
+  const students=DB.students.filter(s=>s.program===prog);
+  const records=[];
+  students.forEach(s=>{
+    const roll=String(s.roll||s.roll_no).padStart(3,'0');
+    subjects.forEach(subj=>{
+      const inp=document.getElementById('mk-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
+      if(inp&&inp.value!==''){
+        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:parseFloat(inp.value)||0,total:parseInt(total)});
+      }
+    });
+  });
+  if(!records.length){showToast('No marks entered yet','error');return;}
+  const btn=document.getElementById('save-marks-btn');
+  if(btn){btn.innerHTML='<span class="spinner"></span> Saving...';btn.disabled=true;}
+  // Update local DB — remove old records for this test then add new
+  DB.marks=DB.marks.filter(m=>!(m.program===prog&&m.test_type===testType&&m.month_year===month));
+  DB.marks.push(...records);
+  await sheetsCall({action:'saveMarks',records,program:prog,test_type:testType,month_year:month});
+  if(btn){btn.innerHTML='💾 Save All Marks';btn.disabled=false;}
+  showToast(`✓ ${records.length} marks saved`,'success');
+}
+
+function showMarksReport(){
+  const q=document.getElementById('mk-search').value.trim().toLowerCase();
+  if(!q){showToast('Enter a student name or roll number','error');return;}
+  const s=DB.students.find(x=>
+    (x.name||'').toLowerCase().includes(q)||
+    String(x.roll||x.roll_no).padStart(3,'0').includes(q)
+  );
+  if(!s){showToast('Student not found','error');return;}
+  const roll=String(s.roll||s.roll_no).padStart(3,'0');
+  const attendSt=DB.getAttendanceStats(roll);
+  const studentMarks=DB.marks.filter(m=>String(m.roll_no).padStart(3,'0')===roll);
+  const tests=[...new Set(studentMarks.map(m=>m.test_type+'||'+m.month_year))];
+  const testHtml=tests.map(key=>{
+    const[testType,month]=key.split('||');
+    const recs=studentMarks.filter(m=>m.test_type===testType&&m.month_year===month);
+    const totalObtained=recs.reduce((a,b)=>a+(b.obtained||0),0);
+    const totalMax=recs.reduce((a,b)=>a+(b.total||0),0);
+    const pct=totalMax>0?Math.round(totalObtained/totalMax*100):0;
+    const grade=pct>=90?'A+':pct>=80?'A':pct>=70?'B':pct>=60?'C':pct>=50?'D':'F';
+    const cardClass=testType==='December Test'?'december':testType==='Send-up Exam'?'sendup':'';
+    return`<div class="marks-test-card ${cardClass}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <strong style="font-size:13px">${testType} — ${month}</strong>
+        <span class="badge badge-gold">${pct}% — ${grade}</span>
+      </div>
+      <div class="table-wrap"><table>
+        <tr><th>Subject</th><th>Obtained</th><th>Total</th><th>%</th><th>Grade</th></tr>
+        ${recs.map(r=>{
+          const rp=r.total>0?Math.round(r.obtained/r.total*100):0;
+          const rg=rp>=90?'A+':rp>=80?'A':rp>=70?'B':rp>=60?'C':rp>=50?'D':'F';
+          return`<tr><td><strong>${r.subject}</strong></td><td style="font-weight:700">${r.obtained}</td><td>${r.total}</td><td><strong>${rp}%</strong></td><td><span class="badge ${rp>=70?'badge-green':rp>=50?'badge-amber':'badge-red'}">${rg}</span></td></tr>`;
+        }).join('')}
+        <tr style="background:var(--gold-light);font-weight:700"><td><strong>TOTAL</strong></td><td><strong>${totalObtained}</strong></td><td><strong>${totalMax}</strong></td><td><strong>${pct}%</strong></td><td><span class="badge badge-gold">${grade}</span></td></tr>
+      </table></div>
+    </div>`;
+  }).join('');
+  showModal(`📝 ${s.name} — Complete Report`,`
+    <div style="background:var(--green-light);border-radius:8px;padding:12px;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap">
+      <div><div style="font-size:20px;font-weight:800;color:var(--green)">${attendSt.pct}%</div><div style="font-size:11px;color:var(--text2)">Attendance</div></div>
+      <div><div style="font-size:20px;font-weight:800;color:var(--text)">${attendSt.present}/${attendSt.total}</div><div style="font-size:11px;color:var(--text2)">Classes</div></div>
+      <div><div style="font-size:20px;font-weight:800;color:var(--gold)">${tests.length}</div><div style="font-size:11px;color:var(--text2)">Exams Taken</div></div>
+      <div style="font-size:12px;color:var(--text2);align-self:center">${s.program}</div>
+    </div>
+    ${testHtml||'<div class="alert alert-info">No exam marks recorded yet for this student.</div>'}`);
+}
+
+// ══════════════════════════════════════════
+// TEACHER PUNCTUALITY
+// ══════════════════════════════════════════
+function pagePunctuality(){
+  // Parse time to minutes since midnight
+  function timeToMins(t){
+    if(!t)return null;
+    const s=String(t);
+    let h,m;
+    if(s.includes('1899-12-30T')){
+      const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
+      h=parseInt(parts[0]);m=parseInt(parts[1]||0);
+    } else if(s.includes('AM')||s.includes('PM')){
+      const match=s.match(/(\d+):(\d+)\s*(AM|PM)/i);
+      if(!match)return null;
+      h=parseInt(match[1]);m=parseInt(match[2]);
+      if(match[3].toUpperCase()==='PM'&&h!==12)h+=12;
+      if(match[3].toUpperCase()==='AM'&&h===12)h=0;
+    } else if(s.includes(':')&&s.length<=5){
+      const parts=s.split(':');h=parseInt(parts[0]);m=parseInt(parts[1]);
+    } else return null;
+    return h*60+m;
+  }
+
+  // Group attendance by teacher
+  const teacherStats={};
+  DB.attendance.forEach(a=>{
+    const tid=String(a.teacher_id||'');
+    if(!tid)return;
+    if(!teacherStats[tid]){
+      const t=DB.teachers.find(x=>(x.id||x.teacher_id)===tid);
+      teacherStats[tid]={name:a.teacher_name||tid,id:tid,sessions:0,times:[],subjects:new Set()};
+    }
+    const mins=timeToMins(a.time);
+    if(mins!==null&&!teacherStats[tid].times.find(x=>x.date===String(a.date).split('T')[0]&&x.subj===a.subject)){
+      teacherStats[tid].times.push({mins,date:String(a.date).split('T')[0],subj:a.subject});
+    }
+    teacherStats[tid].subjects.add(a.subject);
+  });
+
+  // Count unique sessions per teacher
+  Object.values(teacherStats).forEach(ts=>{
+    ts.sessions=ts.times.length;
+  });
+
+  if(!Object.keys(teacherStats).length){
+    return`<div class="page-header"><h2>⏰ Teacher Punctuality</h2><p>Analysed from attendance submission times</p></div>
+    <div class="alert alert-info">No attendance data yet. Once teachers start submitting attendance, punctuality analysis will appear here automatically.</div>`;
+  }
+
+  // Calculate stats per teacher
+  const stats=Object.values(teacherStats).map(ts=>{
+    if(!ts.times.length)return{...ts,avgMins:null,onTimePct:0,trend:'—'};
+    const allMins=ts.times.map(x=>x.mins);
+    const avg=Math.round(allMins.reduce((a,b)=>a+b,0)/allMins.length);
+    // Define on-time as before 2:00 PM (840 mins) — reasonable for college sessions
+    const onTime=allMins.filter(m=>m<=840).length;
+    const onTimePct=Math.round(onTime/allMins.length*100);
+    // Trend: compare last 3 vs first 3
+    const early=allMins.slice(0,3);
+    const late=allMins.slice(-3);
+    const earlyAvg=early.reduce((a,b)=>a+b,0)/early.length;
+    const lateAvg=late.reduce((a,b)=>a+b,0)/late.length;
+    const trend=lateAvg<earlyAvg-10?'⬆️ Improving':lateAvg>earlyAvg+10?'⬇️ Declining':'➡️ Stable';
+    return{...ts,avgMins:avg,onTimePct,trend,onTime,late:allMins.length-onTime};
+  }).filter(ts=>ts.sessions>0).sort((a,b)=>b.onTimePct-a.onTimePct);
+
+  function minsToTime(m){
+    if(m===null)return'—';
+    const h=Math.floor(m/60),min=m%60;
+    const ap=h>=12?'PM':'AM';
+    return`${h%12||12}:${String(min).padStart(2,'0')} ${ap}`;
+  }
+
+  const alerts=stats.filter(ts=>ts.onTimePct<70&&ts.sessions>=3);
+  const stars=stats.filter(ts=>ts.onTimePct>=95&&ts.sessions>=3);
+
+  return`<div class="page-header"><h2>⏰ Teacher Punctuality</h2><p>Auto-calculated from attendance submission times — no extra data entry needed</p></div>
+
+  ${alerts.length?`<div class="alert alert-warning" style="margin-bottom:12px">⚠️ ${alerts.length} teacher(s) below 70% punctuality — see cards below for details</div>`:''}
+  ${stars.length?`<div class="alert alert-info" style="margin-bottom:16px">⭐ ${stars.length} teacher(s) with 95%+ punctuality — excellent performance</div>`:''}
+
+  <div class="stats-grid" style="margin-bottom:20px">
+    <div class="stat-card sc-green"><div class="stat-label">Teachers Active</div><div class="stat-value">${stats.length}</div><div class="stat-sub">Submitted attendance</div></div>
+    <div class="stat-card sc-teal"><div class="stat-label">Avg Punctuality</div><div class="stat-value">${stats.length?Math.round(stats.reduce((a,b)=>a+b.onTimePct,0)/stats.length):0}%</div><div class="stat-sub">Across all teachers</div></div>
+    <div class="stat-card sc-gold"><div class="stat-label">Best Performer</div><div class="stat-value" style="font-size:16px;margin-top:4px">${stats[0]?.name||'—'}</div><div class="stat-sub">${stats[0]?.onTimePct||0}% on time</div></div>
+    <div class="stat-card sc-red"><div class="stat-label">Needs Attention</div><div class="stat-value" style="color:var(--red)">${alerts.length}</div><div class="stat-sub">Below 70%</div></div>
+  </div>
+
+  <div class="punct-grid" style="margin-bottom:24px">
+    ${stats.map(ts=>{
+      const col=ts.onTimePct>=85?'var(--green)':ts.onTimePct>=70?'var(--amber)':'var(--red)';
+      const badge=ts.onTimePct>=95?'badge-green':ts.onTimePct>=70?'badge-amber':'badge-red';
+      return`<div class="perf-card">
+        <div class="perf-card-header">
+          <strong style="font-size:14px">${ts.name}</strong>
+          <span class="badge ${badge}">${ts.onTimePct}% on time</span>
+        </div>
+        <div class="perf-metric">
+          <div class="perf-metric-label">Punctuality</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div class="progress" style="flex:1"><div class="progress-bar ${ts.onTimePct>=75?'green':ts.onTimePct>=50?'amber':'red'}" style="width:${ts.onTimePct}%"></div></div>
+            <strong style="color:${col}">${ts.onTimePct}%</strong>
+          </div>
+        </div>
+        <div class="perf-metric">
+          <div class="perf-metric-label">Sessions Submitted</div>
+          <div class="perf-metric-value">${ts.sessions} total &nbsp;·&nbsp; ${ts.onTime} on time &nbsp;·&nbsp; ${ts.late} late</div>
+        </div>
+        <div class="perf-metric">
+          <div class="perf-metric-label">Average Submission Time</div>
+          <div class="perf-metric-value">${minsToTime(ts.avgMins)}</div>
+        </div>
+        <div class="perf-metric">
+          <div class="perf-metric-label">Trend</div>
+          <div class="perf-metric-value">${ts.trend}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  <div class="card">
+    <div class="card-header"><span class="card-title">📊 Summary Table</span></div>
+    <div class="table-wrap"><table>
+      <tr><th>Teacher</th><th>Sessions</th><th>On Time</th><th>Late</th><th>Avg Time</th><th>Punctuality</th><th>Trend</th></tr>
+      ${stats.map(ts=>{
+        const col=ts.onTimePct>=85?'var(--green)':ts.onTimePct>=70?'var(--amber)':'var(--red)';
+        return`<tr>
+          <td><strong>${ts.name}</strong></td>
+          <td>${ts.sessions}</td>
+          <td style="color:var(--green);font-weight:700">${ts.onTime}</td>
+          <td style="color:var(--red);font-weight:700">${ts.late}</td>
+          <td style="color:var(--text2)">${minsToTime(ts.avgMins)}</td>
+          <td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1;min-width:60px"><div class="progress-bar ${ts.onTimePct>=75?'green':ts.onTimePct>=50?'amber':'red'}" style="width:${ts.onTimePct}%"></div></div><strong style="color:${col}">${ts.onTimePct}%</strong></div></td>
+          <td>${ts.trend}</td>
+        </tr>`;
+      }).join('')}
+    </table></div>
+  </div>`;
+}
+
 function showSubjectReport(roll){
   const s=DB.students.find(x=>String(x.roll||x.roll_no).padStart(3,'0')===String(roll).padStart(3,'0'));
   if(!s)return;
