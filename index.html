@@ -501,12 +501,12 @@ function pageDashboard(){
     <div class="card-header"><span class="card-title">Recent Sessions</span><span class="badge badge-gray">Last 7 Days</span></div>
     ${todayRecs.length===0?`<p style="color:var(--text2);font-size:13px;text-align:center;padding:20px 0">No attendance recorded in last 7 days.</p>`:`
     <div class="table-wrap"><table>
-      <tr><th>Date</th><th>Subject</th><th>Teacher</th><th>Present</th><th>Absent</th><th>Time</th></tr>
-      ${[...new Set(todayRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')))].sort((a,b)=>b.localeCompare(a)).map(key=>{
-        const[d,subj,tid]=key.split('|');
-        const recs=todayRecs.filter(a=>String(a.date).split('T')[0]===d&&a.subject===subj&&String(a.teacher_id||'')===tid);
+      <tr><th>Date</th><th>Subject</th><th>Year</th><th>Teacher</th><th>Present</th><th>Absent</th><th>Time</th></tr>
+      ${[...new Set(todayRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')+'|'+(a.year||'')))].sort((a,b)=>b.localeCompare(a)).map(key=>{
+        const[d,subj,tid,yr]=key.split('|');
+        const recs=todayRecs.filter(a=>String(a.date).split('T')[0]===d&&a.subject===subj&&String(a.teacher_id||'')===tid&&(a.year||'')===(yr||''));
         const p=recs.filter(a=>a.status==='present').length;
-        return`<tr><td style="color:var(--text2);font-size:12px">${formatDate(d)}</td><td><strong>${subj}</strong></td><td>${recs[0]?.teacher_name||'—'}</td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td style="color:var(--text2)">${formatTime(recs[0]?.time)}</td></tr>`;
+        return`<tr><td style="color:var(--text2);font-size:12px">${formatDate(d)}</td><td><strong>${subj}</strong></td><td><span class="badge badge-gray" style="font-size:10px">${yr||'—'}</span></td><td>${recs[0]?.teacher_name||'—'}</td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td style="color:var(--text2)">${formatTime(recs[0]?.time)}</td></tr>`;
       }).join('')}
     </table></div>`}
   </div>`;
@@ -931,6 +931,42 @@ function getTeacherAutoGroup(teacherId,subject,year){
   const groups=[...new Set(matches.map(m=>m.group))];
   return groups;
 }
+function showGroupSelector(groups,subj,year){
+  const body=document.getElementById('attendance-body');
+  if(!body)return;
+  body.innerHTML=`
+    <div class="card" style="max-width:400px;margin:0 auto;text-align:center;padding:30px">
+      <div style="font-size:18px;font-weight:800;color:var(--text);margin-bottom:8px">Which group are you taking?</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:24px">${subj} — ${year}</div>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+        ${groups.map(g=>`
+          <button onclick="selectGroupAndLoad('${g}','${subj}','${year}')"
+            style="padding:16px 28px;border-radius:var(--radius-lg);border:2px solid ${g==='science'?'var(--green)':'var(--amber)'};background:${g==='science'?'var(--green-light)':'var(--amber-light)'};cursor:pointer;font-size:15px;font-weight:700;color:${g==='science'?'var(--green-dark)':'var(--amber)'};transition:all .2s"
+            onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+            ${g==='science'?'🔬 Science Group<br><span style="font-size:11px;font-weight:400">FSc + ICS + ICom</span>':'📚 Arts Group<br><span style="font-size:11px;font-weight:400">FA + FA-IT</span>'}
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+
+function selectGroupAndLoad(group,subj,year){
+  const groupEl=document.getElementById('att-group');
+  const groupDisplay=document.getElementById('att-group-display');
+  if(groupEl){
+    groupEl.value=group;
+    if(groupDisplay)groupDisplay.textContent=group==='science'?'FSc + ICS + ICom':'FA + FA-IT';
+  }
+  // Now load students for selected group
+  const activeGroups=getGroupPrograms(group);
+  const enrolled=DB.students.filter(s=>{
+    const prog=s.program||'';
+    const inYear=prog.includes(year);
+    const inGroup=!activeGroups||activeGroups.some(gp=>prog.includes(gp));
+    return DB.getStudentSubjects(s).includes(subj)&&inYear&&inGroup;
+  });
+  currentScanSession={subject:subj,year,group,present:new Set(),absent:new Set(),enrolled};
+  renderScanInterface();
+}
 function loadStudentsForSubject(){
   const subj=document.getElementById('att-subject').value;
   const year=document.getElementById('att-year').value;
@@ -952,8 +988,11 @@ function loadStudentsForSubject(){
           manualGroup=autoGroups[0];
           if(groupDisplay)groupDisplay.textContent=autoGroups[0]==='science'?'FSc + ICS + ICom':'FA + FA-IT';
         } else {
+          // Multiple groups — show selector prompt before loading students
           groupEl.value='';
-          if(groupDisplay)groupDisplay.textContent='All Students (Both Groups)';
+          if(groupDisplay)groupDisplay.textContent='Select group below ↓';
+          showGroupSelector(autoGroups,subj,year);
+          return;
         }
       }
     }
@@ -1260,7 +1299,7 @@ function pageMyReports(){
   const teacher=currentUser.teacher;
   const tid=teacher.id||teacher.teacher_id;
   const myRecs=DB.attendance.filter(a=>String(a.teacher_id)===String(tid));
-  const sessions=[...new Set(myRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject))];
+  const sessions=[...new Set(myRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.year||'')))];
   return`<div class="page-header"><h2>My Sessions</h2><p>Your attendance history</p></div>
   <div class="stats-grid">
     <div class="stat-card sc-green"><div class="stat-label">Sessions Taken</div><div class="stat-value">${sessions.length}</div></div>
@@ -1268,12 +1307,12 @@ function pageMyReports(){
   </div>
   ${!sessions.length?`<div class="alert alert-info">No sessions yet. Go to Take Attendance to start.</div>`:`
   <div class="table-wrap"><table>
-    <tr><th>Date</th><th>Subject</th><th>Present</th><th>Absent</th><th>Total</th></tr>
+    <tr><th>Date</th><th>Subject</th><th>Year</th><th>Present</th><th>Absent</th><th>Total</th></tr>
     ${sessions.map(key=>{
-      const[date,subject]=key.split('|');
-      const recs=myRecs.filter(a=>String(a.date).split('T')[0]===date&&a.subject===subject);
+      const[date,subject,yr]=key.split('|');
+      const recs=myRecs.filter(a=>String(a.date).split('T')[0]===date&&a.subject===subject&&(a.year||'')===(yr||''));
       const p=recs.filter(a=>a.status==='present').length;
-      return`<tr><td>${formatDate(date)}</td><td><strong>${subject}</strong></td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td>${recs.length}</td></tr>`;
+      return`<tr><td>${formatDate(date)}</td><td><strong>${subject}</strong></td><td><span class="badge badge-gray" style="font-size:10px">${yr||'—'}</span></td><td><span class="badge badge-green">${p}</span></td><td><span class="badge badge-red">${recs.length-p}</span></td><td>${recs.length}</td></tr>`;
     }).join('')}
   </table></div>`}`;
 }
