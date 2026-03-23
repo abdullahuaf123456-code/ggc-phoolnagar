@@ -317,17 +317,42 @@ let DB={
 let currentUser=null,currentRole=null,loginRole='admin',scannerInstance=null,currentScanSession=null,sheetsReady=false,cameraFacing='user';
 
 function sheetsCall(payload){
-  // Single write path — fire directly to Apps Script
-  // Apps Script is idempotent — handles deduplication server-side
-  // no-cors: .then() always fires, .catch() never fires with no-cors
-  // So we do NOT use queue here — it would cause doubles
+  if(!navigator.onLine){
+    // Offline — save to queue immediately
+    addToQueue(payload);
+    showSyncBar('📶 Offline — saved locally',false,false);
+    setTimeout(hideSyncBar,3000);
+    return Promise.resolve({success:true,queued:true});
+  }
+  // Online — try direct fetch
   showSyncBar('Saving...');
   fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(payload),headers:{'Content-Type':'text/plain'},mode:'no-cors'})
     .then(()=>{
       showSyncBar('✓ Saved to Sheets',false,true);
       setTimeout(hideSyncBar,2000);
+      updateSyncBadge();
+    })
+    .catch(()=>{
+      // Fetch failed even though online — queue as fallback
+      addToQueue(payload);
+      showSyncBar('⚠ Save failed — queued locally',true,false);
+      setTimeout(hideSyncBar,3000);
     });
   return Promise.resolve({success:true});
+}
+
+function addToQueue(payload){
+  try{
+    const q=JSON.parse(localStorage.getItem('ggc_sync_queue')||'[]');
+    // Avoid duplicate queue entries for same session
+    const key=JSON.stringify({action:payload.action,date:payload.records?.[0]?.date,subject:payload.records?.[0]?.subject,teacher_id:payload.records?.[0]?.teacher_id});
+    const exists=q.find(item=>JSON.stringify({action:item.payload.action,date:item.payload.records?.[0]?.date,subject:item.payload.records?.[0]?.subject,teacher_id:item.payload.records?.[0]?.teacher_id})===key);
+    if(!exists){
+      q.push({payload,timestamp:Date.now()});
+      localStorage.setItem('ggc_sync_queue',JSON.stringify(q));
+    }
+    updateSyncBadge();
+  }catch(e){}
 }
 
 async function loadFromSheets(){
@@ -1359,17 +1384,8 @@ function showAddTimetableRow(){
       <select id="tt-group"><option value="science">FSc+ICS+ICom (Science)</option><option value="arts">FA+FA-IT (Arts)</option></select>
     </div>
     <div class="form-group"><label>Scheduled Time</label>
-      <select id="tt-time">
-        <option value="">Not set</option>
-        <option value="08:00">8:00 AM</option>
-        <option value="09:00">9:00 AM</option>
-        <option value="10:00">10:00 AM</option>
-        <option value="11:00">11:00 AM</option>
-        <option value="12:00">12:00 PM</option>
-        <option value="13:00">1:00 PM</option>
-        <option value="14:00">2:00 PM</option>
-        <option value="15:00">3:00 PM</option>
-      </select>
+      <input type="text" id="tt-time" placeholder="e.g. 8:15 AM" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;outline:none">
+      <div style="font-size:10px;color:var(--text3);margin-top:3px">Type as: 8:15 AM &nbsp;|&nbsp; 9:45 AM &nbsp;|&nbsp; 10:30 AM</div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" onclick="saveTimetableRow()">Save</button>
@@ -1405,17 +1421,8 @@ function editTimetableRow(idx){
       <select id="tt-group"><option value="science" ${tg.group==='science'?'selected':''}>FSc+ICS+ICom</option><option value="arts" ${tg.group==='arts'?'selected':''}>FA+FA-IT</option></select>
     </div>
     <div class="form-group"><label>Scheduled Time</label>
-      <select id="tt-time">
-        <option value="" ${!tg.scheduled_time?'selected':''}>Not set</option>
-        <option value="08:00" ${'08:00'===tg.scheduled_time?'selected':''}>8:00 AM</option>
-        <option value="09:00" ${'09:00'===tg.scheduled_time?'selected':''}>9:00 AM</option>
-        <option value="10:00" ${'10:00'===tg.scheduled_time?'selected':''}>10:00 AM</option>
-        <option value="11:00" ${'11:00'===tg.scheduled_time?'selected':''}>11:00 AM</option>
-        <option value="12:00" ${'12:00'===tg.scheduled_time?'selected':''}>12:00 PM</option>
-        <option value="13:00" ${'13:00'===tg.scheduled_time?'selected':''}>1:00 PM</option>
-        <option value="14:00" ${'14:00'===tg.scheduled_time?'selected':''}>2:00 PM</option>
-        <option value="15:00" ${'15:00'===tg.scheduled_time?'selected':''}>3:00 PM</option>
-      </select>
+      <input type="text" id="tt-time" value="${tg.scheduled_time||''}" placeholder="e.g. 8:15 AM" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;outline:none">
+      <div style="font-size:10px;color:var(--text3);margin-top:3px">Type as: 8:15 AM &nbsp;|&nbsp; 9:45 AM &nbsp;|&nbsp; 10:30 AM</div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" onclick="updateTimetableRow(${idx})">Update</button>
@@ -1466,17 +1473,24 @@ function pageMarks(){
         </select>
       </div>
       <div class="form-group"><label>Program ★</label>
-        <select id="mk-program" onchange="loadMarksEntry()">
+        <select id="mk-program" onchange="onMarksProgramChange()">
           <option value="">Select program...</option>
-          ${Object.keys(DB.programs).map(p=>`<option>${p}</option>`).join('')}
+          ${[...new Set(Object.keys(DB.programs).map(p=>p.replace(' - 1st Year','').replace(' - 2nd Year','')))].map(p=>`<option>${p}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Total Marks (Main Subjects)</label>
-        <input type="number" id="mk-total" value="50" min="1" max="200" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;outline:none" onchange="loadMarksEntry()">
-        <div style="font-size:10px;color:var(--text3);margin-top:3px">Pak Studies & Islamic Studies always 50</div>
+      <div class="form-group"><label>Year ★</label>
+        <select id="mk-year" onchange="onMarksProgramChange()">
+          <option value="">Select year...</option>
+          <option value="1st Year">1st Year</option>
+          <option value="2nd Year">2nd Year</option>
+        </select>
       </div>
     </div>
-    <button class="btn btn-primary btn-sm" onclick="loadMarksEntry()" style="width:auto">Load Students →</button>
+    <div id="mk-subject-totals" style="display:none;margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Set Total Marks Per Subject</div>
+      <div id="mk-subject-totals-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-bottom:12px"></div>
+      <button class="btn btn-primary btn-sm" id="mk-load-btn" onclick="loadMarksEntry()">Load Students →</button>
+    </div>
   </div>
   <div id="marks-entry-area"></div>
   <div style="height:40px"></div>
@@ -1493,6 +1507,35 @@ function getSubjectTotal(subj,globalTotal){
   const fixed50=['Pakistan Studies','Islamic Studies','Tarjamat ul Quran','Urdu','Pakistan Studies'];
   return fixed50.includes(subj.trim())?50:parseInt(globalTotal)||50;
 }
+function onMarksProgramChange(){
+  const prog=document.getElementById('mk-program')?.value;
+  const year=document.getElementById('mk-year')?.value;
+  const area=document.getElementById('mk-subject-totals');
+  const grid=document.getElementById('mk-subject-totals-grid');
+  if(!prog||!year){
+    if(area)area.style.display='none';
+    return;
+  }
+  const fullProg=prog+' - '+year;
+  const subjects=DB.programs[fullProg]||DB.programs[prog]||[];
+  if(!subjects.length){
+    if(area)area.style.display='none';
+    showToast('No subjects found for this program','error');
+    return;
+  }
+  const fixed50=['Pakistan Studies','Islamic Studies','Tarjamat ul Quran','Urdu'];
+  if(grid){
+    grid.innerHTML=subjects.map(s=>`
+      <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);padding:8px 10px;border-radius:var(--radius);border:1px solid var(--border)">
+        <div style="flex:1;font-size:12px;font-weight:600;color:var(--text)">${s}</div>
+        <input type="number" id="mktot-${s.replace(/[^a-zA-Z0-9]/g,'_')}"
+          value="${fixed50.includes(s)?50:50}" min="1" max="200"
+          style="width:55px;padding:4px 6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;text-align:center;outline:none">
+        <span style="font-size:10px;color:var(--text3)">marks</span>
+      </div>`).join('');
+  }
+  if(area)area.style.display='block';
+}
 function updateMonthOptions(){
   const type=document.getElementById('mk-type')?.value||'Monthly Test';
   const sel=document.getElementById('mk-month');
@@ -1506,26 +1549,27 @@ function updateMonthOptions(){
   sel.innerHTML=list.map(m=>`<option>${m}</option>`).join('');
 }
 function loadMarksEntry(){
-  const prog=document.getElementById('mk-program')?.value;
+  const progBase=document.getElementById('mk-program')?.value;
+  const year=document.getElementById('mk-year')?.value;
   const _mea=document.getElementById('marks-entry-area');
-  if(!prog){if(_mea)_mea.innerHTML='';return;}
+  if(!progBase||!year){if(_mea)_mea.innerHTML='';return;}
   if(!_mea)return;
-  const students=DB.students.filter(s=>s.program===prog);
-  const subjects=DB.programs[prog]||[];
+  const prog=progBase+' - '+year;
+  const students=DB.students.filter(s=>(s.program||'')=== prog);
+  const subjects=DB.programs[prog]||DB.programs[progBase]||[];
   const testType=document.getElementById('mk-type')?.value||'Monthly Test';
   const month=document.getElementById('mk-month')?.value||'';
-  const total=document.getElementById('mk-total')?.value||'50';
   if(!students.length){document.getElementById('marks-entry-area').innerHTML='<div class="alert alert-info">No students in this program.</div>';return;}
   _mea.innerHTML=`
     <div class="card">
       <div class="card-header">
         <span class="card-title">${testType} — ${month} — ${prog}</span>
-        <button class="btn btn-success btn-sm" id="save-marks-btn" onclick="saveMarksEntry('${prog}','${testType}','${month}','${total}')">💾 Save All Marks</button>
+        <button class="btn btn-success btn-sm" id="save-marks-btn" onclick="saveMarksEntry('${prog}','${testType}','${month}')">💾 Save All Marks</button>
       </div>
       <div class="table-wrap"><table id="marks-table">
         <tr>
           <th>Roll</th><th>Name</th>
-          ${subjects.map(s=>`<th style="min-width:80px">${s}<br><span style="font-size:10px;font-weight:400">/ ${getSubjectTotal(s,total)}</span></th>`).join('')}
+          ${subjects.map(s=>`<th style="min-width:80px">${s}<br><span style="font-size:10px;font-weight:400">/ ${(()=>{const i=document.getElementById('mktot-'+s.replace(/[^a-zA-Z0-9]/g,'_'));return i?i.value:50;})()}</span></th>`).join('')}
           <th>Total</th><th>%</th><th>Grade</th>
         </tr>
         ${students.map(s=>{
@@ -1536,7 +1580,7 @@ function loadMarksEntry(){
           return`<tr id="mkrow-${roll}">
             <td><span class="badge badge-gold">${roll}</span></td>
             <td style="font-size:12px"><strong>${s.name}</strong></td>
-            ${subjects.map(subj=>`<td><input class="marks-input" type="number" min="0" max="${getSubjectTotal(subj,total)}" id="mk-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" value="${existing[subj]||''}" oninput="updateRowTotal('${roll}','${prog}','${total}')" placeholder="—"></td>`).join('')}
+            ${subjects.map(subj=>`<td><input class="marks-input" type="number" min="0" max="${(()=>{const i=document.getElementById('mktot-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));return i?i.value:50;})()}" id="mk-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" value="${existing[subj]||''}" oninput="updateRowTotal('${roll}','${subjects}')" placeholder="—"></td>`).join('')}
             <td id="mktotal-${roll}" style="font-weight:700">—</td>
             <td id="mkpct-${roll}" style="font-weight:700">—</td>
             <td id="mkgrade-${roll}">—</td>
@@ -1549,18 +1593,19 @@ function loadMarksEntry(){
   setTimeout(()=>{
     students.forEach(s=>{
       const roll=String(s.roll||s.roll_no).padStart(3,'0');
-      updateRowTotal(roll,prog,total);
+      updateRowTotal(roll,subjects);
     });
   },50);
 }
 
-function updateRowTotal(roll,prog,total){
-  const subjects=DB.programs[prog]||[];
-  let sum=0,count=0;
-  let maxCount=0;
+function updateRowTotal(roll,subjList){
+  const subjects=Array.isArray(subjList)?subjList:(DB.programs[subjList]||[]);
+  let sum=0,count=0,maxCount=0;
   subjects.forEach(subj=>{
     const inp=document.getElementById('mk-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
-    if(inp&&inp.value!==''){sum+=parseFloat(inp.value)||0;count++;maxCount+=getSubjectTotal(subj,total);}
+    const totInp=document.getElementById('mktot-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
+    const st=totInp?parseInt(totInp.value)||50:50;
+    if(inp&&inp.value!==''){sum+=parseFloat(inp.value)||0;count++;maxCount+=st;}
   });
   const obtained=sum;
   const pct=count>0?Math.round(obtained/maxCount*100):0;
@@ -1574,7 +1619,7 @@ function updateRowTotal(roll,prog,total){
   if(gradeEl)gradeEl.innerHTML=count>0?`<span class="badge ${gradeColor}">${grade}</span>`:'—';
 }
 
-async function saveMarksEntry(prog,testType,month,total){
+async function saveMarksEntry(prog,testType,month){
   const subjects=DB.programs[prog]||[];
   const students=DB.students.filter(s=>s.program===prog);
   const records=[];
@@ -1582,8 +1627,10 @@ async function saveMarksEntry(prog,testType,month,total){
     const roll=String(s.roll||s.roll_no).padStart(3,'0');
     subjects.forEach(subj=>{
       const inp=document.getElementById('mk-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
+      const totInp=document.getElementById('mktot-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
+      const st=totInp?parseInt(totInp.value)||50:50;
       if(inp&&inp.value!==''){
-        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:parseFloat(inp.value)||0,total:getSubjectTotal(subj,total)});
+        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:parseFloat(inp.value)||0,total:st});
       }
     });
   });
@@ -1654,10 +1701,8 @@ function showMarksReport(){
 // TEACHER PUNCTUALITY
 // ══════════════════════════════════════════
 function formatScheduledTime(t){
-  if(!t)return'—';
-  const[h,m]=t.split(':').map(Number);
-  const ap=h>=12?'PM':'AM';
-  return`${h%12||12}:${String(m).padStart(2,'0')} ${ap}`;
+  if(!t||!String(t).trim())return'—';
+  return String(t).trim();
 }
 
 function timeToMins(t){
@@ -2052,33 +2097,64 @@ function getPendingCount(){
 function updateSyncBadge(){
   const n=getPendingCount();
   const badge=document.getElementById('sync-badge');
-  if(badge){badge.textContent=n>0?`${n} pending`:'All synced';badge.style.background=n>0?'#e65100':'#1a7a3a';}
+  if(badge){
+    badge.textContent=n>0?`${n} pending sync`:'✓ All synced';
+    badge.style.background=n>0?'#e65100':'#1a7a3a';
+  }
+  const btn=document.getElementById('manual-sync-btn');
+  if(btn){btn.style.display=n>0?'inline-flex':'none';}
 }
 async function syncPending(){
   const q=JSON.parse(localStorage.getItem('ggc_sync_queue')||'[]');
-  if(!q.length){showToast('Nothing to sync — all up to date','success');return;}
+  if(!q.length){showToast('All synced — nothing pending','success');return;}
+  if(!navigator.onLine){showToast('No internet connection — try again later','error');return;}
   const btn=document.getElementById('manual-sync-btn');
   if(btn){btn.innerHTML='<span class="spinner"></span> Syncing...';btn.disabled=true;}
+  const remaining=[];
   let success=0;
   for(const item of q){
     try{
       await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify(item.payload),headers:{'Content-Type':'text/plain'},mode:'no-cors'});
       success++;
-    }catch(e){}
+      // Small delay between requests to avoid overwhelming Apps Script
+      await new Promise(r=>setTimeout(r,300));
+    }catch(e){
+      remaining.push(item);
+    }
   }
-  localStorage.setItem('ggc_sync_queue','[]');
+  localStorage.setItem('ggc_sync_queue',JSON.stringify(remaining));
   updateSyncBadge();
   if(btn){btn.innerHTML='🔄 Sync Now';btn.disabled=false;}
-  showToast(`✓ Synced ${success} sessions to Google Sheets`,'success');
+  if(success>0){
+    showToast(`✓ ${success} session(s) synced to Google Sheets`,'success');
+    // Refresh data from Sheets after sync
+    await refreshAttendance(true);
+  }
+  if(remaining.length>0){
+    showToast(`⚠ ${remaining.length} session(s) still pending — try again`,'error');
+  }
 }
 window.addEventListener('load',()=>{
-  // Clear any old queue items from previous buggy versions
-  // Apps Script is now idempotent so queue is not needed for normal flow
-  localStorage.removeItem('ggc_sync_queue');
   loadFromSheets();
+  updateSyncBadge();
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('/sw.js').catch(()=>{});
   }
+});
+
+// Auto-sync when internet returns
+window.addEventListener('online',()=>{
+  const q=JSON.parse(localStorage.getItem('ggc_sync_queue')||'[]');
+  if(q.length>0){
+    showToast(`📶 Internet restored — syncing ${q.length} pending session(s)...`,'success');
+    setTimeout(syncPending,1000);
+  } else {
+    showToast('📶 Internet restored','success');
+  }
+});
+
+window.addEventListener('offline',()=>{
+  showToast('📶 Internet lost — attendance will be saved locally','error');
 });
 </script>
 </body>
