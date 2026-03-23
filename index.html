@@ -164,6 +164,9 @@ tr:hover td{background:var(--green-xlight)}
   body{background:#fff;padding:0}
   .content{padding:0}
   .id-card{box-shadow:none;border:1.5px solid #000}
+  .id-card-header{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:linear-gradient(135deg,#145e2c,#1a7a3a)!important;color:#fff!important}
+  .id-card{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .id-card-photo{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 
 /* ── ID CARDS ── */
@@ -440,6 +443,7 @@ function renderPage(id){
   if(pages[id])c.innerHTML=pages[id]();
   if(id==='qr-cards')setTimeout(renderQRCodes,100);
   if(id==='id-cards')setTimeout(renderIDCards,100);
+  if(id==='punctuality')setTimeout(renderPunctContent,100);
   if(id==='take-attendance')initAttendancePage();
 }
 
@@ -1184,7 +1188,8 @@ function setFilter(f){
 }
 
 function renderReportTable(){
-  document.getElementById('report-table-wrap').innerHTML=buildReportTable(
+  const _rtw=document.getElementById('report-table-wrap');if(!_rtw)return;
+  _rtw.innerHTML=buildReportTable(
     document.getElementById('rpt-program').value,
     document.getElementById('rpt-filter').value
   );
@@ -1330,12 +1335,13 @@ function pageTimetable(){
   </div>
   <div class="alert alert-info" style="margin-bottom:16px">Group assignments control which students each teacher sees when taking attendance.</div>
   <div class="table-wrap"><table id="timetable-table">
-    <tr><th>Teacher</th><th>Subject</th><th>Year</th><th>Group</th><th>Actions</th></tr>
+    <tr><th>Teacher</th><th>Subject</th><th>Year</th><th>Group</th><th>Scheduled</th><th>Actions</th></tr>
     ${DB.teacherGroups.map((tg,i)=>`<tr>
       <td><strong>${tg.teacher_name||tg.teacher_id}</strong><br><span style="font-size:10px;color:var(--text3)">${tg.teacher_id}</span></td>
       <td>${tg.subject}</td>
       <td><span class="badge badge-gold">${tg.year}</span></td>
       <td><span class="badge ${tg.group==='science'?'badge-green':'badge-amber'}">${tg.group==='science'?'FSc+ICS+ICom':'FA+FA-IT'}</span></td>
+      <td><span class="badge badge-gray">${tg.scheduled_time?formatScheduledTime(tg.scheduled_time):'—'}</span></td>
       <td><button class="btn btn-outline btn-sm" onclick="editTimetableRow(${i})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteTimetableRow(${i})">Delete</button></td>
     </tr>`).join('')}
@@ -1352,6 +1358,19 @@ function showAddTimetableRow(){
     <div class="form-group"><label>Group</label>
       <select id="tt-group"><option value="science">FSc+ICS+ICom (Science)</option><option value="arts">FA+FA-IT (Arts)</option></select>
     </div>
+    <div class="form-group"><label>Scheduled Time</label>
+      <select id="tt-time">
+        <option value="">Not set</option>
+        <option value="08:00">8:00 AM</option>
+        <option value="09:00">9:00 AM</option>
+        <option value="10:00">10:00 AM</option>
+        <option value="11:00">11:00 AM</option>
+        <option value="12:00">12:00 PM</option>
+        <option value="13:00">1:00 PM</option>
+        <option value="14:00">2:00 PM</option>
+        <option value="15:00">3:00 PM</option>
+      </select>
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" onclick="saveTimetableRow()">Save</button>
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
@@ -1363,7 +1382,8 @@ async function saveTimetableRow(){
   const subject=document.getElementById('tt-subject').value;
   const year=document.getElementById('tt-year').value;
   const group=document.getElementById('tt-group').value;
-  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
+  const scheduled_time=document.getElementById('tt-time').value;
+  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group,scheduled_time};
   const exists=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&tg.year===year&&tg.group===group);
   if(exists){showToast('Already exists','error');return;}
   DB.teacherGroups.push(newRow);
@@ -1384,6 +1404,19 @@ function editTimetableRow(idx){
     <div class="form-group"><label>Group</label>
       <select id="tt-group"><option value="science" ${tg.group==='science'?'selected':''}>FSc+ICS+ICom</option><option value="arts" ${tg.group==='arts'?'selected':''}>FA+FA-IT</option></select>
     </div>
+    <div class="form-group"><label>Scheduled Time</label>
+      <select id="tt-time">
+        <option value="" ${!tg.scheduled_time?'selected':''}>Not set</option>
+        <option value="08:00" ${'08:00'===tg.scheduled_time?'selected':''}>8:00 AM</option>
+        <option value="09:00" ${'09:00'===tg.scheduled_time?'selected':''}>9:00 AM</option>
+        <option value="10:00" ${'10:00'===tg.scheduled_time?'selected':''}>10:00 AM</option>
+        <option value="11:00" ${'11:00'===tg.scheduled_time?'selected':''}>11:00 AM</option>
+        <option value="12:00" ${'12:00'===tg.scheduled_time?'selected':''}>12:00 PM</option>
+        <option value="13:00" ${'13:00'===tg.scheduled_time?'selected':''}>1:00 PM</option>
+        <option value="14:00" ${'14:00'===tg.scheduled_time?'selected':''}>2:00 PM</option>
+        <option value="15:00" ${'15:00'===tg.scheduled_time?'selected':''}>3:00 PM</option>
+      </select>
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" onclick="updateTimetableRow(${idx})">Update</button>
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
@@ -1395,8 +1428,9 @@ async function updateTimetableRow(idx){
   const subject=document.getElementById('tt-subject').value;
   const year=document.getElementById('tt-year').value;
   const group=document.getElementById('tt-group').value;
+  const scheduled_time=document.getElementById('tt-time').value;
   const oldRow=DB.teacherGroups[idx];
-  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group};
+  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group,scheduled_time};
   DB.teacherGroups[idx]=newRow;
   await sheetsCall({action:'updateTeacherGroup',oldRow,newRow});
   closeModal();showToast('Updated','success');renderPage('timetable');
@@ -1414,7 +1448,7 @@ async function deleteTimetableRow(idx){
 // ══════════════════════════════════════════
 function pageMarks(){
   const testTypes=['Monthly Test','December Test','Send-up Exam'];
-  const months=['September 2025','October 2025','November 2025','December 2025','January 2026','February 2026','March 2026'];
+  const months=['September 2025','October 2025','November 2025'];
   return`<div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
     <div><h2>📝 Examination Marks</h2><p>Enter and view test marks for Monthly, December, and Send-up exams</p></div>
   </div>
@@ -1422,7 +1456,7 @@ function pageMarks(){
     <div class="card-header"><span class="card-title">Enter Marks</span></div>
     <div class="form-grid" style="margin-bottom:16px">
       <div class="form-group"><label>Test Type ★</label>
-        <select id="mk-type">
+        <select id="mk-type" onchange="updateMonthOptions()">
           ${testTypes.map(t=>`<option>${t}</option>`).join('')}
         </select>
       </div>
@@ -1437,8 +1471,9 @@ function pageMarks(){
           ${Object.keys(DB.programs).map(p=>`<option>${p}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group"><label>Total Marks per Subject</label>
-        <input type="number" id="mk-total" value="50" min="1" max="200" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;outline:none">
+      <div class="form-group"><label>Total Marks (Main Subjects)</label>
+        <input type="number" id="mk-total" value="50" min="1" max="200" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;outline:none" onchange="loadMarksEntry()">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px">Pak Studies & Islamic Studies always 50</div>
       </div>
     </div>
     <button class="btn btn-primary btn-sm" onclick="loadMarksEntry()" style="width:auto">Load Students →</button>
@@ -1454,16 +1489,34 @@ function pageMarks(){
   </div>`;
 }
 
+function getSubjectTotal(subj,globalTotal){
+  const fixed50=['Pakistan Studies','Islamic Studies','Tarjamat ul Quran','Urdu','Pakistan Studies'];
+  return fixed50.includes(subj.trim())?50:parseInt(globalTotal)||50;
+}
+function updateMonthOptions(){
+  const type=document.getElementById('mk-type')?.value||'Monthly Test';
+  const sel=document.getElementById('mk-month');
+  if(!sel)return;
+  const opts={
+    'Monthly Test':['September 2025','October 2025','November 2025','January 2026','February 2026','March 2026'],
+    'December Test':['December 2025'],
+    'Send-up Exam':['February 2026','March 2026']
+  };
+  const list=opts[type]||opts['Monthly Test'];
+  sel.innerHTML=list.map(m=>`<option>${m}</option>`).join('');
+}
 function loadMarksEntry(){
   const prog=document.getElementById('mk-program')?.value;
-  if(!prog){document.getElementById('marks-entry-area').innerHTML='';return;}
+  const _mea=document.getElementById('marks-entry-area');
+  if(!prog){if(_mea)_mea.innerHTML='';return;}
+  if(!_mea)return;
   const students=DB.students.filter(s=>s.program===prog);
   const subjects=DB.programs[prog]||[];
   const testType=document.getElementById('mk-type')?.value||'Monthly Test';
   const month=document.getElementById('mk-month')?.value||'';
   const total=document.getElementById('mk-total')?.value||'50';
   if(!students.length){document.getElementById('marks-entry-area').innerHTML='<div class="alert alert-info">No students in this program.</div>';return;}
-  document.getElementById('marks-entry-area').innerHTML=`
+  _mea.innerHTML=`
     <div class="card">
       <div class="card-header">
         <span class="card-title">${testType} — ${month} — ${prog}</span>
@@ -1472,7 +1525,7 @@ function loadMarksEntry(){
       <div class="table-wrap"><table id="marks-table">
         <tr>
           <th>Roll</th><th>Name</th>
-          ${subjects.map(s=>`<th style="min-width:80px">${s}<br><span style="font-size:10px;font-weight:400">/ ${total}</span></th>`).join('')}
+          ${subjects.map(s=>`<th style="min-width:80px">${s}<br><span style="font-size:10px;font-weight:400">/ ${getSubjectTotal(s,total)}</span></th>`).join('')}
           <th>Total</th><th>%</th><th>Grade</th>
         </tr>
         ${students.map(s=>{
@@ -1483,7 +1536,7 @@ function loadMarksEntry(){
           return`<tr id="mkrow-${roll}">
             <td><span class="badge badge-gold">${roll}</span></td>
             <td style="font-size:12px"><strong>${s.name}</strong></td>
-            ${subjects.map(subj=>`<td><input class="marks-input" type="number" min="0" max="${total}" id="mk-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" value="${existing[subj]||''}" oninput="updateRowTotal('${roll}','${prog}','${total}')" placeholder="—"></td>`).join('')}
+            ${subjects.map(subj=>`<td><input class="marks-input" type="number" min="0" max="${getSubjectTotal(subj,total)}" id="mk-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" value="${existing[subj]||''}" oninput="updateRowTotal('${roll}','${prog}','${total}')" placeholder="—"></td>`).join('')}
             <td id="mktotal-${roll}" style="font-weight:700">—</td>
             <td id="mkpct-${roll}" style="font-weight:700">—</td>
             <td id="mkgrade-${roll}">—</td>
@@ -1492,22 +1545,25 @@ function loadMarksEntry(){
       </table></div>
     </div>`;
   // Calculate totals for rows with existing data
-  students.forEach(s=>{
-    const roll=String(s.roll||s.roll_no).padStart(3,'0');
-    updateRowTotal(roll,prog,total);
-  });
+  // Small delay to ensure DOM is rendered before calculating totals
+  setTimeout(()=>{
+    students.forEach(s=>{
+      const roll=String(s.roll||s.roll_no).padStart(3,'0');
+      updateRowTotal(roll,prog,total);
+    });
+  },50);
 }
 
 function updateRowTotal(roll,prog,total){
   const subjects=DB.programs[prog]||[];
   let sum=0,count=0;
+  let maxCount=0;
   subjects.forEach(subj=>{
     const inp=document.getElementById('mk-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
-    if(inp&&inp.value!==''){sum+=parseFloat(inp.value)||0;count++;}
+    if(inp&&inp.value!==''){sum+=parseFloat(inp.value)||0;count++;maxCount+=getSubjectTotal(subj,total);}
   });
-  const maxTotal=parseInt(total)*subjects.length;
   const obtained=sum;
-  const pct=count>0?Math.round(obtained/(parseInt(total)*count)*100):0;
+  const pct=count>0?Math.round(obtained/maxCount*100):0;
   const grade=pct>=90?'A+':pct>=80?'A':pct>=70?'B':pct>=60?'C':pct>=50?'D':'F';
   const gradeColor=pct>=70?'badge-green':pct>=50?'badge-amber':'badge-red';
   const totalEl=document.getElementById('mktotal-'+roll);
@@ -1527,7 +1583,7 @@ async function saveMarksEntry(prog,testType,month,total){
     subjects.forEach(subj=>{
       const inp=document.getElementById('mk-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
       if(inp&&inp.value!==''){
-        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:parseFloat(inp.value)||0,total:parseInt(total)});
+        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:parseFloat(inp.value)||0,total:getSubjectTotal(subj,total)});
       }
     });
   });
@@ -1579,154 +1635,335 @@ function showMarksReport(){
     </div>`;
   }).join('');
   showModal(`📝 ${s.name} — Complete Report`,`
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+      <button class="btn btn-outline btn-sm no-print" onclick="printStudentReport('${roll}')">🖨️ Print Report</button>
+      <button class="btn btn-danger btn-sm no-print" onclick="deleteMarksPrompt('${roll}','${s.name}')">🗑 Delete a Record</button>
+    </div>
+    <div id="printable-report-${roll}">
     <div style="background:var(--green-light);border-radius:8px;padding:12px;margin-bottom:16px;display:flex;gap:16px;flex-wrap:wrap">
       <div><div style="font-size:20px;font-weight:800;color:var(--green)">${attendSt.pct}%</div><div style="font-size:11px;color:var(--text2)">Attendance</div></div>
       <div><div style="font-size:20px;font-weight:800;color:var(--text)">${attendSt.present}/${attendSt.total}</div><div style="font-size:11px;color:var(--text2)">Classes</div></div>
       <div><div style="font-size:20px;font-weight:800;color:var(--gold)">${tests.length}</div><div style="font-size:11px;color:var(--text2)">Exams Taken</div></div>
       <div style="font-size:12px;color:var(--text2);align-self:center">${s.program}</div>
     </div>
-    ${testHtml||'<div class="alert alert-info">No exam marks recorded yet for this student.</div>'}`);
+    ${testHtml||'<div class="alert alert-info">No exam marks recorded yet for this student.</div>'}
+    </div>`);
 }
 
 // ══════════════════════════════════════════
 // TEACHER PUNCTUALITY
 // ══════════════════════════════════════════
+function formatScheduledTime(t){
+  if(!t)return'—';
+  const[h,m]=t.split(':').map(Number);
+  const ap=h>=12?'PM':'AM';
+  return`${h%12||12}:${String(m).padStart(2,'0')} ${ap}`;
+}
+
+function timeToMins(t){
+  if(!t)return null;
+  const s=String(t);
+  let h,m;
+  if(s.includes('1899-12-30T')){
+    const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
+    h=parseInt(parts[0]);m=parseInt(parts[1]||0);
+  } else if(s.includes('AM')||s.includes('PM')){
+    const match=s.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if(!match)return null;
+    h=parseInt(match[1]);m=parseInt(match[2]);
+    if(match[3].toUpperCase()==='PM'&&h!==12)h+=12;
+    if(match[3].toUpperCase()==='AM'&&h===12)h=0;
+  } else if(s.includes(':')&&s.length<=5){
+    const parts=s.split(':');h=parseInt(parts[0]);m=parseInt(parts[1]||0);
+  } else return null;
+  if(isNaN(h)||isNaN(m))return null;
+  return h*60+m;
+}
+
+function minsToTimeStr(mins){
+  if(mins===null||mins===undefined)return'—';
+  const h=Math.floor(mins/60),m=mins%60;
+  const ap=h>=12?'PM':'AM';
+  return`${h%12||12}:${String(m).padStart(2,'0')} ${ap}`;
+}
+
+function getWeekStart(){
+  const d=new Date();d.setDate(d.getDate()-d.getDay());
+  return d.toISOString().split('T')[0];
+}
+function getMonthStart(){
+  const d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
+}
+
+let punctFilter='today';
+function setPunctFilter(f){
+  punctFilter=f;
+  document.querySelectorAll('.punct-pill').forEach(p=>p.classList.toggle('active',p.dataset.f===f));
+  renderPunctContent();
+}
+
 function pagePunctuality(){
-  // Parse time to minutes since midnight
-  function timeToMins(t){
-    if(!t)return null;
-    const s=String(t);
-    let h,m;
-    if(s.includes('1899-12-30T')){
-      const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
-      h=parseInt(parts[0]);m=parseInt(parts[1]||0);
-    } else if(s.includes('AM')||s.includes('PM')){
-      const match=s.match(/(\d+):(\d+)\s*(AM|PM)/i);
-      if(!match)return null;
-      h=parseInt(match[1]);m=parseInt(match[2]);
-      if(match[3].toUpperCase()==='PM'&&h!==12)h+=12;
-      if(match[3].toUpperCase()==='AM'&&h===12)h=0;
-    } else if(s.includes(':')&&s.length<=5){
-      const parts=s.split(':');h=parseInt(parts[0]);m=parseInt(parts[1]);
-    } else return null;
-    return h*60+m;
+  if(!DB.attendance.length){
+    return`<div class="page-header"><h2>⏰ Teacher Punctuality</h2><p>Auto-calculated from attendance submission times</p></div>
+    <div class="alert alert-info">No attendance data yet. Once teachers submit attendance, punctuality analysis appears here automatically.</div>`;
   }
-
-  // Group attendance by teacher
-  const teacherStats={};
-  DB.attendance.forEach(a=>{
-    const tid=String(a.teacher_id||'');
-    if(!tid)return;
-    if(!teacherStats[tid]){
-      const t=DB.teachers.find(x=>(x.id||x.teacher_id)===tid);
-      teacherStats[tid]={name:a.teacher_name||tid,id:tid,sessions:0,times:[],subjects:new Set()};
-    }
-    const mins=timeToMins(a.time);
-    if(mins!==null&&!teacherStats[tid].times.find(x=>x.date===String(a.date).split('T')[0]&&x.subj===a.subject)){
-      teacherStats[tid].times.push({mins,date:String(a.date).split('T')[0],subj:a.subject});
-    }
-    teacherStats[tid].subjects.add(a.subject);
-  });
-
-  // Count unique sessions per teacher
-  Object.values(teacherStats).forEach(ts=>{
-    ts.sessions=ts.times.length;
-  });
-
-  if(!Object.keys(teacherStats).length){
-    return`<div class="page-header"><h2>⏰ Teacher Punctuality</h2><p>Analysed from attendance submission times</p></div>
-    <div class="alert alert-info">No attendance data yet. Once teachers start submitting attendance, punctuality analysis will appear here automatically.</div>`;
-  }
-
-  // Calculate stats per teacher
-  const stats=Object.values(teacherStats).map(ts=>{
-    if(!ts.times.length)return{...ts,avgMins:null,onTimePct:0,trend:'—'};
-    const allMins=ts.times.map(x=>x.mins);
-    const avg=Math.round(allMins.reduce((a,b)=>a+b,0)/allMins.length);
-    // Define on-time as before 2:00 PM (840 mins) — reasonable for college sessions
-    const onTime=allMins.filter(m=>m<=840).length;
-    const onTimePct=Math.round(onTime/allMins.length*100);
-    // Trend: compare last 3 vs first 3
-    const early=allMins.slice(0,3);
-    const late=allMins.slice(-3);
-    const earlyAvg=early.reduce((a,b)=>a+b,0)/early.length;
-    const lateAvg=late.reduce((a,b)=>a+b,0)/late.length;
-    const trend=lateAvg<earlyAvg-10?'⬆️ Improving':lateAvg>earlyAvg+10?'⬇️ Declining':'➡️ Stable';
-    return{...ts,avgMins:avg,onTimePct,trend,onTime,late:allMins.length-onTime};
-  }).filter(ts=>ts.sessions>0).sort((a,b)=>b.onTimePct-a.onTimePct);
-
-  function minsToTime(m){
-    if(m===null)return'—';
-    const h=Math.floor(m/60),min=m%60;
-    const ap=h>=12?'PM':'AM';
-    return`${h%12||12}:${String(min).padStart(2,'0')} ${ap}`;
-  }
-
-  const alerts=stats.filter(ts=>ts.onTimePct<70&&ts.sessions>=3);
-  const stars=stats.filter(ts=>ts.onTimePct>=95&&ts.sessions>=3);
-
   return`<div class="page-header"><h2>⏰ Teacher Punctuality</h2><p>Auto-calculated from attendance submission times — no extra data entry needed</p></div>
-
-  ${alerts.length?`<div class="alert alert-warning" style="margin-bottom:12px">⚠️ ${alerts.length} teacher(s) below 70% punctuality — see cards below for details</div>`:''}
-  ${stars.length?`<div class="alert alert-info" style="margin-bottom:16px">⭐ ${stars.length} teacher(s) with 95%+ punctuality — excellent performance</div>`:''}
-
-  <div class="stats-grid" style="margin-bottom:20px">
-    <div class="stat-card sc-green"><div class="stat-label">Teachers Active</div><div class="stat-value">${stats.length}</div><div class="stat-sub">Submitted attendance</div></div>
-    <div class="stat-card sc-teal"><div class="stat-label">Avg Punctuality</div><div class="stat-value">${stats.length?Math.round(stats.reduce((a,b)=>a+b.onTimePct,0)/stats.length):0}%</div><div class="stat-sub">Across all teachers</div></div>
-    <div class="stat-card sc-gold"><div class="stat-label">Best Performer</div><div class="stat-value" style="font-size:16px;margin-top:4px">${stats[0]?.name||'—'}</div><div class="stat-sub">${stats[0]?.onTimePct||0}% on time</div></div>
-    <div class="stat-card sc-red"><div class="stat-label">Needs Attention</div><div class="stat-value" style="color:var(--red)">${alerts.length}</div><div class="stat-sub">Below 70%</div></div>
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+    <button class="btn punct-pill active" data-f="today" onclick="setPunctFilter('today')" style="border-radius:20px;padding:8px 18px;font-size:13px;border:1.5px solid var(--border2)">📅 Today</button>
+    <button class="btn punct-pill" data-f="week" onclick="setPunctFilter('week')" style="border-radius:20px;padding:8px 18px;font-size:13px;border:1.5px solid var(--border2)">📆 This Week</button>
+    <button class="btn punct-pill" data-f="month" onclick="setPunctFilter('month')" style="border-radius:20px;padding:8px 18px;font-size:13px;border:1.5px solid var(--border2)">🗓️ This Month</button>
+    <button class="btn punct-pill" data-f="all" onclick="setPunctFilter('all')" style="border-radius:20px;padding:8px 18px;font-size:13px;border:1.5px solid var(--border2)">📊 All Time</button>
   </div>
+  <div id="punct-content"></div>`;
+}
 
-  <div class="punct-grid" style="margin-bottom:24px">
-    ${stats.map(ts=>{
-      const col=ts.onTimePct>=85?'var(--green)':ts.onTimePct>=70?'var(--amber)':'var(--red)';
-      const badge=ts.onTimePct>=95?'badge-green':ts.onTimePct>=70?'badge-amber':'badge-red';
-      return`<div class="perf-card">
-        <div class="perf-card-header">
-          <strong style="font-size:14px">${ts.name}</strong>
-          <span class="badge ${badge}">${ts.onTimePct}% on time</span>
-        </div>
-        <div class="perf-metric">
-          <div class="perf-metric-label">Punctuality</div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div class="progress" style="flex:1"><div class="progress-bar ${ts.onTimePct>=75?'green':ts.onTimePct>=50?'amber':'red'}" style="width:${ts.onTimePct}%"></div></div>
-            <strong style="color:${col}">${ts.onTimePct}%</strong>
+function renderPunctContent(){
+  const _pc=document.getElementById('punct-content');
+  if(!_pc)return;
+  const today=todayStr();
+  const weekStart=getWeekStart();
+  const monthStart=getMonthStart();
+
+  // Filter attendance by period
+  let recs=DB.attendance;
+  if(punctFilter==='today') recs=recs.filter(a=>String(a.date||'').split('T')[0]===today);
+  else if(punctFilter==='week') recs=recs.filter(a=>String(a.date||'').split('T')[0]>=weekStart);
+  else if(punctFilter==='month') recs=recs.filter(a=>String(a.date||'').split('T')[0]>=monthStart);
+
+  // Get unique sessions (date+subject+teacher)
+  const sessionKeys=[...new Set(recs.map(a=>String(a.date||'').split('T')[0]+'||'+a.subject+'||'+(a.teacher_id||'')))];
+
+  if(!sessionKeys.length){
+    document.getElementById('punct-content').innerHTML=`<div class="alert alert-info">No sessions found for this period.</div>`;
+    return;
+  }
+
+  // Build session objects with scheduled time lookup
+  const sessions=sessionKeys.map(key=>{
+    const[date,subject,tid]=key.split('||');
+    const sessionRecs=recs.filter(a=>String(a.date||'').split('T')[0]===date&&a.subject===subject&&String(a.teacher_id||'')===tid);
+    const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
+    const tg=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject);
+    const submittedMins=timeToMins(sessionRecs[0]?.time);
+    const scheduledMins=tg?.scheduled_time?timeToMins(tg.scheduled_time+':00'):null;
+    let delayMins=null,status='unknown';
+    if(submittedMins!==null&&scheduledMins!==null){
+      delayMins=submittedMins-scheduledMins;
+      status=delayMins<=0?'ontime':delayMins<=15?'late':'verylate';
+    } else if(submittedMins!==null){
+      status='submitted';
+    }
+    const yearLabel=(sessionRecs[0]?.year||'');
+    const group=tg?.group??(tg?.group||'');
+    const classLabel=yearLabel+(group?' '+(group==='science'?'Science':'Arts'):'');
+    return{date,subject,tid,teacherName:sessionRecs[0]?.teacher_name||tid,submittedMins,scheduledMins,delayMins,status,classLabel,total:sessionRecs.length,present:sessionRecs.filter(a=>a.status==='present').length};
+  }).sort((a,b)=>b.date.localeCompare(a.date)||( (a.scheduledMins||0)-(b.scheduledMins||0)));
+
+  // Stats
+  const withSchedule=sessions.filter(s=>s.scheduledMins!==null);
+  const onTime=withSchedule.filter(s=>s.status==='ontime').length;
+  const late=withSchedule.filter(s=>s.status==='late').length;
+  const veryLate=withSchedule.filter(s=>s.status==='verylate').length;
+  const noSchedule=sessions.filter(s=>s.scheduledMins===null).length;
+
+  // Per-teacher stats for cards
+  const teacherMap={};
+  sessions.forEach(s=>{
+    if(!teacherMap[s.tid])teacherMap[s.tid]={name:s.teacherName,tid:s.tid,sessions:[],allMins:[],scheduledMins:[]};
+    teacherMap[s.tid].sessions.push(s);
+    if(s.submittedMins!==null)teacherMap[s.tid].allMins.push(s.submittedMins);
+    if(s.scheduledMins!==null)teacherMap[s.tid].scheduledMins.push(s);
+  });
+
+  const teacherStats=Object.values(teacherMap).map(t=>{
+    const withSched=t.scheduledMins;
+    const onT=withSched.filter(s=>s.status==='ontime').length;
+    const onTimePct=withSched.length?Math.round(onT/withSched.length*100):null;
+    const avgDelay=withSched.length?Math.round(withSched.reduce((a,b)=>a+(b.delayMins||0),0)/withSched.length):null;
+    const avgSubmit=t.allMins.length?Math.round(t.allMins.reduce((a,b)=>a+b,0)/t.allMins.length):null;
+    const submissionPct=Math.round(t.sessions.length/Math.max(t.sessions.length,1)*100);
+    // Trend: compare first half vs second half delay
+    let trend='➡️ Stable';
+    if(withSched.length>=4){
+      const half=Math.floor(withSched.length/2);
+      const firstHalf=withSched.slice(0,half).reduce((a,b)=>a+(b.delayMins||0),0)/half;
+      const secondHalf=withSched.slice(-half).reduce((a,b)=>a+(b.delayMins||0),0)/half;
+      if(secondHalf<firstHalf-5)trend='📈 Improving';
+      else if(secondHalf>firstHalf+5)trend='📉 Declining';
+    }
+    return{...t,onTimePct,avgDelay,avgSubmit,submissionPct,trend,totalSessions:t.sessions.length};
+  }).sort((a,b)=>(b.onTimePct||0)-(a.onTimePct||0));
+
+  // Time-slot analysis
+  const slotMap={};
+  sessions.filter(s=>s.scheduledMins!==null).forEach(s=>{
+    const slotKey=minsToTimeStr(s.scheduledMins);
+    if(!slotMap[slotKey])slotMap[slotKey]={slot:slotKey,scheduledMins:s.scheduledMins,total:0,ontime:0,late:0,verylate:0};
+    slotMap[slotKey].total++;
+    slotMap[slotKey][s.status]=(slotMap[slotKey][s.status]||0)+1;
+  });
+  const slotStats=Object.values(slotMap).sort((a,b)=>a.scheduledMins-b.scheduledMins);
+
+  // Alerts
+  const alertTeachers=teacherStats.filter(t=>t.onTimePct!==null&&t.onTimePct<70&&t.totalSessions>=3);
+  const starTeachers=teacherStats.filter(t=>t.onTimePct!==null&&t.onTimePct>=95&&t.totalSessions>=3);
+
+  document.getElementById('punct-content').innerHTML=`
+    <!-- STAT CARDS -->
+    <div class="stats-grid" style="margin-bottom:20px">
+      <div class="stat-card sc-green"><div class="stat-label">On Time</div><div class="stat-value" style="color:var(--green)">${onTime}</div><div class="stat-sub">${withSchedule.length?Math.round(onTime/withSchedule.length*100):0}% of scheduled</div></div>
+      <div class="stat-card sc-gold"><div class="stat-label">Late (≤15 min)</div><div class="stat-value" style="color:var(--amber)">${late}</div><div class="stat-sub">${withSchedule.length?Math.round(late/withSchedule.length*100):0}% of scheduled</div></div>
+      <div class="stat-card sc-red"><div class="stat-label">Very Late (>15 min)</div><div class="stat-value" style="color:var(--red)">${veryLate}</div><div class="stat-sub">${withSchedule.length?Math.round(veryLate/withSchedule.length*100):0}% of scheduled</div></div>
+      <div class="stat-card sc-gray"><div class="stat-label">No Schedule Set</div><div class="stat-value">${noSchedule}</div><div class="stat-sub">Set in Timetable tab</div></div>
+    </div>
+
+    ${alertTeachers.length?`<div class="alert alert-warning" style="margin-bottom:12px">⚠️ ${alertTeachers.length} teacher(s) below 70% punctuality this period.</div>`:''}
+    ${starTeachers.length?`<div class="alert alert-info" style="margin-bottom:16px">⭐ ${starTeachers.map(t=>t.name).join(', ')} — exemplary punctuality (95%+)</div>`:''}
+
+    <!-- TODAY'S SESSION TABLE -->
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><span class="card-title">📅 Session Details</span><span class="badge badge-gray">${sessions.length} sessions</span></div>
+      <div class="table-wrap"><table>
+        <tr><th>Date</th><th>Teacher</th><th>Subject</th><th>Class</th><th>Scheduled</th><th>Submitted</th><th>Delay</th><th>Status</th></tr>
+        ${sessions.map(s=>{
+          const delayStr=s.delayMins===null?'—':s.delayMins<=0?`<span style="color:var(--green)">${Math.abs(s.delayMins)} min early</span>`:`<span style="color:${s.delayMins<=15?'var(--amber)':'var(--red)'}">+${s.delayMins} min</span>`;
+          const statusBadge=s.status==='ontime'?'<span class="badge badge-green">✓ On Time</span>':s.status==='late'?'<span class="badge badge-amber">⚠ Late</span>':s.status==='verylate'?'<span class="badge badge-red">✗ Very Late</span>':'<span class="badge badge-gray">No Schedule</span>';
+          const rowStyle=s.status==='verylate'?'background:var(--red-light)':s.status==='late'?'background:var(--amber-light)':'';
+          return`<tr style="${rowStyle}">
+            <td style="font-size:11px;color:var(--text2)">${formatDate(s.date)}</td>
+            <td><strong>${s.teacherName}</strong></td>
+            <td>${s.subject}</td>
+            <td style="font-size:11px">${s.classLabel||'—'}</td>
+            <td style="font-weight:600">${s.scheduledMins!==null?minsToTimeStr(s.scheduledMins):'—'}</td>
+            <td style="font-weight:600;color:${s.status==='ontime'?'var(--green)':s.status==='late'?'var(--amber)':'var(--red)'}">${s.submittedMins!==null?minsToTimeStr(s.submittedMins):'—'}</td>
+            <td>${delayStr}</td>
+            <td>${statusBadge}</td>
+          </tr>`;
+        }).join('')}
+      </table></div>
+    </div>
+
+    <!-- TEACHER PERFORMANCE CARDS -->
+    <div class="card-header" style="margin-bottom:12px"><span style="font-size:15px;font-weight:700;color:var(--text)">👥 Teacher Performance</span></div>
+    <div class="punct-grid" style="margin-bottom:24px">
+      ${teacherStats.map(t=>{
+        const pct=t.onTimePct;
+        const col=pct===null?'var(--text3)':pct>=85?'var(--green)':pct>=70?'var(--amber)':'var(--red)';
+        const borderCol=pct===null?'var(--border)':pct>=85?'var(--green)':pct>=70?'var(--amber)':'var(--red)';
+        const badgeLabel=pct===null?'No Schedule':pct>=95?'✓ Excellent':pct>=85?'✓ Good':pct>=70?'⚠ Watch':'⚠ Attention Needed';
+        const badgeStyle=pct===null?'background:var(--surface2);color:var(--text2)':pct>=85?'background:var(--green-light);color:#1b5e20':pct>=70?'background:var(--amber-light);color:#7c3200':'background:var(--red-light);color:#b71c1c';
+        const avgDelayStr=t.avgDelay===null?'No schedule set':t.avgDelay<=0?`${Math.abs(t.avgDelay)} min early`:`${t.avgDelay} min late`;
+        const avgDelayCol=t.avgDelay===null?'var(--text3)':t.avgDelay<=0?'var(--green)':t.avgDelay<=15?'var(--amber)':'var(--red)';
+        return`<div class="perf-card" style="border-left:4px solid ${borderCol}">
+          <div class="perf-card-header">
+            <strong style="font-size:14px">${t.name}</strong>
+            <span style="font-size:10px;padding:3px 8px;border-radius:12px;font-weight:600;${badgeStyle}">${badgeLabel}</span>
           </div>
-        </div>
-        <div class="perf-metric">
-          <div class="perf-metric-label">Sessions Submitted</div>
-          <div class="perf-metric-value">${ts.sessions} total &nbsp;·&nbsp; ${ts.onTime} on time &nbsp;·&nbsp; ${ts.late} late</div>
-        </div>
-        <div class="perf-metric">
-          <div class="perf-metric-label">Average Submission Time</div>
-          <div class="perf-metric-value">${minsToTime(ts.avgMins)}</div>
-        </div>
-        <div class="perf-metric">
-          <div class="perf-metric-label">Trend</div>
-          <div class="perf-metric-value">${ts.trend}</div>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>
-
-  <div class="card">
-    <div class="card-header"><span class="card-title">📊 Summary Table</span></div>
-    <div class="table-wrap"><table>
-      <tr><th>Teacher</th><th>Sessions</th><th>On Time</th><th>Late</th><th>Avg Time</th><th>Punctuality</th><th>Trend</th></tr>
-      ${stats.map(ts=>{
-        const col=ts.onTimePct>=85?'var(--green)':ts.onTimePct>=70?'var(--amber)':'var(--red)';
-        return`<tr>
-          <td><strong>${ts.name}</strong></td>
-          <td>${ts.sessions}</td>
-          <td style="color:var(--green);font-weight:700">${ts.onTime}</td>
-          <td style="color:var(--red);font-weight:700">${ts.late}</td>
-          <td style="color:var(--text2)">${minsToTime(ts.avgMins)}</td>
-          <td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1;min-width:60px"><div class="progress-bar ${ts.onTimePct>=75?'green':ts.onTimePct>=50?'amber':'red'}" style="width:${ts.onTimePct}%"></div></div><strong style="color:${col}">${ts.onTimePct}%</strong></div></td>
-          <td>${ts.trend}</td>
-        </tr>`;
+          <div class="perf-metric">
+            <div class="perf-metric-label">Punctuality Rate</div>
+            ${pct!==null?`<div style="display:flex;align-items:center;gap:8px"><div class="progress" style="flex:1"><div class="progress-bar ${pct>=75?'green':pct>=50?'amber':'red'}" style="width:${pct}%"></div></div><strong style="color:${col}">${pct}%</strong></div>`:'<div style="color:var(--text3);font-size:12px">Set scheduled times in Timetable tab</div>'}
+          </div>
+          <div class="perf-metric">
+            <div class="perf-metric-label">Sessions Submitted</div>
+            <div class="perf-metric-value">${t.totalSessions} total</div>
+          </div>
+          <div class="perf-metric">
+            <div class="perf-metric-label">Avg Submission Time</div>
+            <div class="perf-metric-value">${minsToTimeStr(t.avgSubmit)}</div>
+          </div>
+          <div class="perf-metric">
+            <div class="perf-metric-label">Average Delay</div>
+            <div class="perf-metric-value" style="color:${avgDelayCol}">${avgDelayStr}</div>
+          </div>
+          <div class="perf-metric">
+            <div class="perf-metric-label">Trend</div>
+            <div class="perf-metric-value">${t.trend}</div>
+          </div>
+        </div>`;
       }).join('')}
-    </table></div>
-  </div>`;
+    </div>
+
+    <!-- TIME SLOT ANALYSIS -->
+    ${slotStats.length?`<div class="card" style="margin-bottom:20px">
+      <div class="card-header"><span class="card-title">🕐 Time-Slot Analysis</span></div>
+      <div class="table-wrap"><table>
+        <tr><th>Time Slot</th><th>Total</th><th>On Time</th><th>Late</th><th>Very Late</th><th>Punctuality %</th><th>Note</th></tr>
+        ${slotStats.map(sl=>{
+          const pct=Math.round((sl.ontime||0)/sl.total*100);
+          const note=pct<60?'⚠️ High delay rate':pct<75?'⚠️ Needs improvement':pct>=90?'✓ Best slot':'✓ Good';
+          const noteCol=pct<60?'var(--red)':pct<75?'var(--amber)':'var(--green)';
+          const rowStyle=pct<60?'background:var(--red-light)':pct<75?'background:var(--amber-light)':'';
+          return`<tr style="${rowStyle}">
+            <td><strong>${sl.slot}</strong></td>
+            <td>${sl.total}</td>
+            <td style="color:var(--green);font-weight:700">${sl.ontime||0}</td>
+            <td style="color:var(--amber);font-weight:700">${sl.late||0}</td>
+            <td style="color:var(--red);font-weight:700">${sl.verylate||0}</td>
+            <td><div style="display:flex;align-items:center;gap:6px"><div class="progress" style="flex:1;min-width:60px"><div class="progress-bar ${pct>=75?'green':pct>=50?'amber':'red'}" style="width:${pct}%"></div></div><strong>${pct}%</strong></div></td>
+            <td style="font-size:12px;color:${noteCol}">${note}</td>
+          </tr>`;
+        }).join('')}
+      </table></div>
+    </div>`:''}
+
+    <!-- ALERTS -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">🔔 Alerts & Recommendations</span></div>
+      ${alertTeachers.map(t=>`<div class="alert alert-warning" style="margin-bottom:8px">⚠️ <strong>${t.name}:</strong> Only ${t.onTimePct}% on time. Avg delay ${t.avgDelay} min. Recommend discussion.</div>`).join('')}
+      ${starTeachers.map(t=>`<div class="alert alert-info" style="margin-bottom:8px">⭐ <strong>${t.name}:</strong> Exemplary ${t.onTimePct}% punctuality. Consider recognising in staff meeting.</div>`).join('')}
+      ${!alertTeachers.length&&!starTeachers.length?'<p style="color:var(--text2);font-size:13px;padding:8px 0">No alerts for this period.</p>':''}
+    </div>`;
+}
+
+
+function deleteMarksPrompt(roll,name){
+  const studentMarks=DB.marks.filter(m=>String(m.roll_no).padStart(3,'0')===roll);
+  const tests=[...new Set(studentMarks.map(m=>m.test_type+' — '+m.month_year))];
+  if(!tests.length){showToast('No marks records to delete','error');return;}
+  showModal('🗑 Delete Marks Record',`
+    <div class="alert alert-warning" style="margin-bottom:16px">⚠️ Deleting a record cannot be undone.</div>
+    <div class="form-group"><label>Select Record to Delete</label>
+      <select id="del-marks-select" style="width:100%;padding:10px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px">
+        ${tests.map(t=>`<option value="${t}">${t}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-danger btn-sm" onclick="confirmDeleteMarks('${roll}','${name}')">Delete This Record</button>
+      <button class="btn btn-outline btn-sm" onclick="showMarksReport()">Cancel</button>
+    </div>`);
+}
+
+async function confirmDeleteMarks(roll,name){
+  const sel=document.getElementById('del-marks-select');
+  if(!sel)return;
+  const val=sel.value;
+  const[testType,monthYear]=val.split(' — ');
+  if(!confirm('Delete '+testType+' ('+monthYear+') for '+name+'?'))return;
+  DB.marks=DB.marks.filter(m=>!(
+    String(m.roll_no).padStart(3,'0')===roll&&
+    m.test_type===testType&&
+    m.month_year===monthYear
+  ));
+  await sheetsCall({action:'deleteMarks',roll_no:roll,test_type:testType,month_year:monthYear});
+  closeModal();
+  showToast('Record deleted','success');
+}
+
+function printStudentReport(roll){
+  const el=document.getElementById('printable-report-'+roll);
+  if(!el){showToast('Nothing to print','error');return;}
+  const s=DB.students.find(x=>String(x.roll||x.roll_no).padStart(3,'0')===roll);
+  const name=s?s.name:'Student';
+  const prog=s?s.program:'';
+  const issued=new Date().toLocaleDateString('en-PK',{day:'numeric',month:'short',year:'numeric'});
+  const css='*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;padding:24px;color:#1a2e1a;font-size:13px}h2{color:#145e2c;font-size:18px;margin-bottom:4px}.sub{color:#4a6e4a;font-size:12px;margin-bottom:16px}.header{border-bottom:2px solid #1a7a3a;padding-bottom:12px;margin-bottom:16px}table{width:100%;border-collapse:collapse;margin-bottom:16px}th{background:#e8f5e9;padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:#145e2c;border-bottom:1.5px solid #a5d6a7}td{padding:8px 10px;border-bottom:1px solid #d1e8d1;font-size:12px}.badge{display:inline-flex;align-items:center;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600}.badge-green{background:#e8f5e9;color:#1b5e20}.badge-amber{background:#fff3e0;color:#7c3200}.badge-red{background:#ffebee;color:#b71c1c}.badge-gold{background:#fff8e1;color:#7b5800}.progress{height:6px;background:#d1e8d1;border-radius:3px;overflow:hidden}.progress-bar{height:100%;border-radius:3px}.green{background:#1a7a3a}.amber{background:#e65100}.red{background:#c62828}.marks-test-card{padding:12px;margin-bottom:12px;border:1px solid #ccc;border-radius:6px}.december{background:#e8f5e9}.sendup{background:#f5f5f5}@media print{body{padding:12px}}';
+  const body='<div class="header"><h2>Government Graduate College Phoolnagar</h2><div class="sub">Student Result &amp; Attendance Report &nbsp;|&nbsp; Issued: '+issued+'</div></div><div style="margin-bottom:12px"><strong>Name:</strong> '+name+' &nbsp;&nbsp; <strong>Roll:</strong> '+roll+' &nbsp;&nbsp; <strong>Program:</strong> '+prog+'</div>'+el.innerHTML;
+  const win=window.open('','_blank');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Result - '+name+'</title><style>'+css+'</style></head><body>'+body+'</body></html>');
+  win.document.close();
+  win.focus();
+  setTimeout(function(){win.print();},400);
 }
 
 function showSubjectReport(roll){
