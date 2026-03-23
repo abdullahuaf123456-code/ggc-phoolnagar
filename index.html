@@ -298,7 +298,7 @@ const DEFAULT_PROGRAMS={
 
 let DB={
   programs:{...DEFAULT_PROGRAMS},
-  students:[],teachers:[],attendance:[],teacherGroups:[],marks:[],
+  students:[],teachers:[],attendance:[],teacherGroups:[],marks:[],fines:[],
   admin:{username:'principal',password:'admin123'},
   getStudentSubjects(s){
     if(s.subjects&&s.subjects!==''){
@@ -367,6 +367,7 @@ async function loadFromSheets(){
       if(data.programs&&Object.keys(data.programs).length)DB.programs=data.programs;
       if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
       if(data.marks&&data.marks.length)DB.marks=data.marks;
+      if(data.fines&&data.fines.length)DB.fines=data.fines;
       sheetsReady=true;
       document.getElementById('sheets-status').textContent='✓ Connected to Google Sheets';
       document.getElementById('sheets-status').style.color='#1b5e20';
@@ -427,7 +428,7 @@ function showApp(){
 
 function buildNav(){
   const tabs=currentRole==='admin'
-    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['id-cards','🪪 ID Cards'],['timetable','🗓️ Timetable'],['marks','📝 Marks'],['punctuality','⏰ Punctuality'],['reports','📈 Reports']]
+    ?[['dashboard','📊 Dashboard'],['students','👨‍🎓 Students'],['teachers','👨‍🏫 Teachers'],['subjects','📚 Subjects'],['qr-cards','🏷️ QR Cards'],['id-cards','🪪 ID Cards'],['timetable','🗓️ Timetable'],['marks','📝 Marks'],['fines','💰 Fines'],['punctuality','⏰ Punctuality'],['reports','📈 Reports']]
     :[['take-attendance','📷 Take Attendance'],['my-reports','📊 My Reports']];
   document.getElementById('nav-tabs').innerHTML=tabs.map(([id,lbl])=>`<button class="nav-tab" onclick="renderPage('${id}')" id="nav-${id}">${lbl}</button>`).join('');
 }
@@ -456,7 +457,7 @@ async function refreshAttendance(){
 function renderPage(id){
   stopScanner();setActiveNav(id);
   const c=document.getElementById('main-content');
-  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'id-cards':pageIDCards,'timetable':pageTimetable,'marks':pageMarks,'punctuality':pagePunctuality,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
+  const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'id-cards':pageIDCards,'timetable':pageTimetable,'marks':pageMarks,'fines':pageFines,'punctuality':pagePunctuality,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
   if(id==='dashboard'||id==='reports'||id==='my-reports'){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading latest data...</p></div>`;
     refreshAttendance().then(()=>{
@@ -1608,18 +1609,19 @@ function loadMarksEntry(){
       <div class="table-wrap"><table id="marks-table">
         <tr>
           <th>Roll</th><th>Name</th>
-          ${subjects.map(s=>`<th style="min-width:80px">${s}<br><span style="font-size:10px;font-weight:400">/ ${(()=>{const i=document.getElementById('mktot-'+s.replace(/[^a-zA-Z0-9]/g,'_'));return i?i.value:50;})()}</span></th>`).join('')}
+          ${subjects.map(s=>`<th style="min-width:30px;text-align:center">Abs</th><th style="min-width:80px">${s}<br><span style="font-size:10px;font-weight:400">/ ${(()=>{const i=document.getElementById('mktot-'+s.replace(/[^a-zA-Z0-9]/g,'_'));return i?i.value:50;})()}</span></th>`).join('')}
           <th>Total</th><th>%</th><th>Grade</th>
         </tr>
         ${students.map(s=>{
           const roll=String(s.roll||s.roll_no).padStart(3,'0');
           // Load existing marks if any
           const existing={};
-          DB.marks.filter(m=>String(m.roll_no).padStart(3,'0')===roll&&m.test_type===testType&&m.month_year===month).forEach(m=>{existing[m.subject]=m.obtained;});
+          const existingAbs={};
+          DB.marks.filter(m=>String(m.roll_no).padStart(3,'0')===roll&&m.test_type===testType&&m.month_year===month).forEach(m=>{existing[m.subject]=m.obtained;existingAbs[m.subject]=m.appeared==='no';});
           return`<tr id="mkrow-${roll}">
             <td><span class="badge badge-gold">${roll}</span></td>
             <td style="font-size:12px"><strong>${s.name}</strong></td>
-            ${subjects.map(subj=>`<td><input class="marks-input" type="number" min="0" max="${(()=>{const i=document.getElementById('mktot-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));return i?i.value:50;})()}" id="mk-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" value="${existing[subj]||''}" oninput="updateRowTotal('${roll}','${subjects}')" placeholder="—"></td>`).join('')}
+            ${subjects.map(subj=>`<td style="text-align:center"><input type="checkbox" id="mkabs-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" ${existingAbs[subj]?'checked':''} title="Check if ABSENT in this paper" style="width:14px;height:14px;accent-color:var(--red)" onchange="toggleMarkAbsent('${roll}','${subj}',this.checked,'${subjects}')"></td><td><input class="marks-input" type="number" min="0" max="${(()=>{const i=document.getElementById('mktot-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));return i?i.value:50;})()}" id="mk-${roll}-${subj.replace(/[^a-zA-Z0-9]/g,'_')}" value="${existing[subj]||''}" oninput="updateRowTotal('${roll}','${subjects}')" placeholder="—" ${existingAbs[subj]?'disabled style="background:#ffebee"':''} ></td>`).join('')}
             <td id="mktotal-${roll}" style="font-weight:700">—</td>
             <td id="mkpct-${roll}" style="font-weight:700">—</td>
             <td id="mkgrade-${roll}">—</td>
@@ -1669,7 +1671,9 @@ async function saveMarksEntry(prog,testType,month){
       const totInp=document.getElementById('mktot-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
       const st=totInp?parseInt(totInp.value)||50:50;
       if(inp&&inp.value!==''){
-        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:parseFloat(inp.value)||0,total:st});
+        const absChk=document.getElementById('mkabs-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
+        const appeared=absChk&&absChk.checked?'no':'yes';
+        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:appeared==='no'?0:parseFloat(inp.value)||0,total:st,appeared});
       }
     });
   });
@@ -2050,6 +2054,412 @@ function printStudentReport(roll){
   setTimeout(function(){win.print();},400);
 }
 
+function toggleMarkAbsent(roll,subj,isAbsent,subjects){
+  const safeSubj=subj.replace(/[^a-zA-Z0-9]/g,'_');
+  const inp=document.getElementById('mk-'+roll+'-'+safeSubj);
+  if(inp){
+    inp.disabled=isAbsent;
+    inp.style.background=isAbsent?'#ffebee':'';
+    if(isAbsent)inp.value='';
+  }
+  updateRowTotal(roll,subjects);
+}
+function getFineRates(){
+  try{
+    const r=JSON.parse(localStorage.getItem('ggc_fine_rates')||'{}');
+    return{
+      perClass:r.perClass||1,
+      monthlyTest:r.monthlyTest||50,
+      decSendup:r.decSendup||100
+    };
+  }catch(e){return{perClass:1,monthlyTest:50,decSendup:100};}
+}
+
+function saveFineRates(){
+  const rates={
+    perClass:parseFloat(document.getElementById('fr-class').value)||1,
+    monthlyTest:parseFloat(document.getElementById('fr-monthly').value)||50,
+    decSendup:parseFloat(document.getElementById('fr-dec').value)||100
+  };
+  localStorage.setItem('ggc_fine_rates',JSON.stringify(rates));
+  showToast('Fine rates saved','success');
+}
+
+function pageFines(){
+  const rates=getFineRates();
+  const months=['September 2025','October 2025','November 2025','December 2025','January 2026','February 2026','March 2026'];
+  const progBase=[...new Set(Object.keys(DB.programs).map(p=>p.replace(' - 1st Year','').replace(' - 2nd Year','')))];
+  return`<div class="page-header"><h2>💰 Fine Management</h2><p>Generate, track and print student fines</p></div>
+
+  <!-- SECTION A: FINE RATES -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><span class="card-title">⚙️ Fine Rate Settings</span><span class="badge badge-gray">Saved locally</span></div>
+    <div class="form-grid" style="margin-bottom:12px">
+      <div class="form-group"><label>Per Absent Class (Rs.)</label>
+        <input type="number" id="fr-class" value="${rates.perClass}" min="0" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;outline:none">
+      </div>
+      <div class="form-group"><label>Monthly Test — Per Absent Paper (Rs.)</label>
+        <input type="number" id="fr-monthly" value="${rates.monthlyTest}" min="0" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;outline:none">
+      </div>
+      <div class="form-group"><label>December / Send-up — Per Absent Paper (Rs.)</label>
+        <input type="number" id="fr-dec" value="${rates.decSendup}" min="0" style="padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;width:100%;outline:none">
+      </div>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="saveFineRates()" style="width:auto">Save Rates</button>
+  </div>
+
+  <!-- SECTION B: GENERATE FINES -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-header"><span class="card-title">⚡ Generate Fines</span></div>
+    <div class="form-grid" style="margin-bottom:14px">
+      <div class="form-group"><label>Month ★</label>
+        <select id="fg-month">
+          <option value="">Select month...</option>
+          ${months.map(m=>`<option>${m}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Program ★</label>
+        <select id="fg-prog">
+          <option value="">Select program...</option>
+          ${progBase.map(p=>`<option>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Year ★</label>
+        <select id="fg-year">
+          <option value="">Select year...</option>
+          <option value="1st Year">1st Year</option>
+          <option value="2nd Year">2nd Year</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="previewFines()">👁 Preview</button>
+      <button class="btn btn-primary btn-sm" id="gen-fines-btn" onclick="generateFines()">⚡ Generate & Save</button>
+    </div>
+    <div id="fines-preview" style="margin-top:16px"></div>
+  </div>
+
+  <!-- SECTION C: FINE REGISTER -->
+  <div class="card">
+    <div class="card-header"><span class="card-title">📋 Fine Register</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <select id="fr-filter-month" onchange="renderFineRegister()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;outline:none">
+        <option value="">All Months</option>
+        ${months.map(m=>`<option>${m}</option>`).join('')}
+      </select>
+      <select id="fr-filter-prog" onchange="renderFineRegister()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;outline:none">
+        <option value="">All Programs</option>
+        ${progBase.map(p=>`<option>${p}</option>`).join('')}
+      </select>
+      <select id="fr-filter-status" onchange="renderFineRegister()" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:13px;outline:none">
+        <option value="">All</option>
+        <option value="unpaid">Unpaid</option>
+        <option value="paid">Paid</option>
+      </select>
+      <button class="btn btn-primary btn-sm no-print" onclick="printFineSlips()">🖨️ Print Slips</button>
+    </div>
+    <div id="fine-register-wrap">${DB.fines.length?'Click filters to view fines':'<div class="alert alert-info">No fines generated yet. Use Generate Fines above.</div>'}</div>
+  </div>`;
+}
+
+function calcStudentFines(roll,progFull,monthYear,rates){
+  const s=DB.students.find(x=>String(x.roll||x.roll_no).padStart(3,'0')===roll);
+  if(!s)return null;
+
+  // Attendance fines — count unique absent dates in this month
+  const[mon,yr]=monthYear.split(' ');
+  const monthNum={'January':1,'February':2,'March':3,'April':4,'May':5,'June':6,'July':7,'August':8,'September':9,'October':10,'November':11,'December':12}[mon]||0;
+  const yearNum=parseInt(yr);
+
+  const absentDates=new Set();
+  DB.attendance.filter(a=>{
+    const d=new Date(String(a.date).split('T')[0]);
+    return String(a.roll_no).padStart(3,'0')===roll&&
+      a.status==='absent'&&
+      d.getMonth()+1===monthNum&&
+      d.getFullYear()===yearNum;
+  }).forEach(a=>absentDates.add(String(a.date).split('T')[0]));
+
+  // Count absent classes (not days) for per-class fine
+  const absentClasses=DB.attendance.filter(a=>{
+    const d=new Date(String(a.date).split('T')[0]);
+    return String(a.roll_no).padStart(3,'0')===roll&&
+      a.status==='absent'&&
+      d.getMonth()+1===monthNum&&
+      d.getFullYear()===yearNum;
+  }).length;
+
+  const attendFine=absentClasses*rates.perClass;
+
+  // Exam fines — absent papers in this month
+  const examFines=[];
+  const examRecs=DB.marks.filter(m=>
+    String(m.roll_no).padStart(3,'0')===roll&&
+    m.month_year===monthYear&&
+    m.appeared==='no'
+  );
+  const monthlyAbsent=examRecs.filter(m=>m.test_type==='Monthly Test').length;
+  const decAbsent=examRecs.filter(m=>m.test_type==='December Test'||m.test_type==='Send-up Exam').length;
+
+  if(monthlyAbsent>0)examFines.push({type:'Monthly Test',count:monthlyAbsent,amount:monthlyAbsent*rates.monthlyTest});
+  if(decAbsent>0)examFines.push({type:'Dec/Send-up Test',count:decAbsent,amount:decAbsent*rates.decSendup});
+
+  // Carried forward — unpaid from previous months
+  const carried=DB.fines.filter(f=>
+    String(f.roll_no).padStart(3,'0')===roll&&
+    f.status==='unpaid'&&
+    f.month_year!==monthYear
+  ).reduce((sum,f)=>sum+(parseFloat(f.amount)||0),0);
+
+  const examTotal=examFines.reduce((s,e)=>s+e.amount,0);
+  const total=attendFine+examTotal+carried;
+
+  return{roll,name:s.name,program:progFull,absentClasses,attendFine,examFines,carried,total,s};
+}
+
+function previewFines(){
+  const month=document.getElementById('fg-month').value;
+  const prog=document.getElementById('fg-prog').value;
+  const year=document.getElementById('fg-year').value;
+  if(!month||!prog||!year){showToast('Select month, program and year','error');return;}
+  const progFull=prog+' - '+year;
+  const rates=getFineRates();
+  const students=DB.students.filter(s=>s.program===progFull);
+  if(!students.length){showToast('No students in this program','error');return;}
+
+  const preview=students.map(s=>{
+    const roll=String(s.roll||s.roll_no).padStart(3,'0');
+    return calcStudentFines(roll,progFull,month,rates);
+  }).filter(f=>f&&f.total>0);
+
+  const area=document.getElementById('fines-preview');
+  if(!area)return;
+  if(!preview.length){area.innerHTML='<div class="alert alert-info">No fines to generate for this selection.</div>';return;}
+
+  const totalAmt=preview.reduce((s,f)=>s+f.total,0);
+  area.innerHTML=`<div class="alert alert-warning" style="margin-bottom:12px">
+    Preview — ${preview.length} students with fines. Total: Rs. ${totalAmt}. Click Generate & Save to confirm.
+  </div>
+  <div class="table-wrap"><table>
+    <tr><th>Roll</th><th>Name</th><th>Absent Classes</th><th>Class Fine</th><th>Exam Fines</th><th>Carried Fwd</th><th>Total</th></tr>
+    ${preview.map(f=>`<tr>
+      <td><span class="badge badge-gold">${f.roll}</span></td>
+      <td><strong>${f.name}</strong></td>
+      <td>${f.absentClasses}</td>
+      <td>Rs. ${f.attendFine}</td>
+      <td>${f.examFines.map(e=>`${e.type} (${e.count}): Rs.${e.amount}`).join('<br>')||'—'}</td>
+      <td>${f.carried>0?`Rs. ${f.carried}`:'—'}</td>
+      <td style="font-weight:700;color:var(--red)">Rs. ${f.total}</td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+
+async function generateFines(){
+  const month=document.getElementById('fg-month').value;
+  const prog=document.getElementById('fg-prog').value;
+  const year=document.getElementById('fg-year').value;
+  if(!month||!prog||!year){showToast('Select month, program and year','error');return;}
+  if(!confirm('Generate and save fines for '+prog+' '+year+' — '+month+'?'))return;
+
+  const progFull=prog+' - '+year;
+  const rates=getFineRates();
+  const students=DB.students.filter(s=>s.program===progFull);
+  const today=todayStr();
+  const records=[];
+
+  students.forEach(s=>{
+    const roll=String(s.roll||s.roll_no).padStart(3,'0');
+    const f=calcStudentFines(roll,progFull,month,rates);
+    if(!f||f.total<=0)return;
+
+    if(f.attendFine>0){
+      records.push({roll_no:roll,name:s.name,program:progFull,year,month_year:month,
+        fine_type:'attendance',description:`${f.absentClasses} absent classes × Rs.${rates.perClass}`,
+        amount:f.attendFine,status:'unpaid',generated_date:today});
+    }
+    f.examFines.forEach(ef=>{
+      records.push({roll_no:roll,name:s.name,program:progFull,year,month_year:month,
+        fine_type:'exam',description:`${ef.type} — ${ef.count} subjects absent`,
+        amount:ef.amount,status:'unpaid',generated_date:today});
+    });
+    if(f.carried>0){
+      records.push({roll_no:roll,name:s.name,program:progFull,year,month_year:month,
+        fine_type:'carried',description:'Carried from previous month',
+        amount:f.carried,status:'unpaid',generated_date:today});
+    }
+  });
+
+  if(!records.length){showToast('No fines to generate','error');return;}
+
+  const btn=document.getElementById('gen-fines-btn');
+  if(btn){btn.innerHTML='<span class="spinner"></span> Saving...';btn.disabled=true;}
+
+  // Remove existing fines for this program+month before saving new ones
+  DB.fines=DB.fines.filter(f=>!(f.program===progFull&&f.month_year===month));
+  DB.fines.push(...records);
+
+  await sheetsCall({action:'saveFines',records,program:progFull,month_year:month});
+
+  if(btn){btn.innerHTML='⚡ Generate & Save';btn.disabled=false;}
+  showToast(`✓ ${records.length} fine records saved`,'success');
+  document.getElementById('fines-preview').innerHTML='';
+  renderFineRegister();
+}
+
+function renderFineRegister(){
+  const filterMonth=document.getElementById('fr-filter-month')?.value||'';
+  const filterProg=document.getElementById('fr-filter-prog')?.value||'';
+  const filterStatus=document.getElementById('fr-filter-status')?.value||'';
+  const wrap=document.getElementById('fine-register-wrap');
+  if(!wrap)return;
+
+  let fines=[...DB.fines];
+  if(filterMonth)fines=fines.filter(f=>f.month_year===filterMonth);
+  if(filterProg)fines=fines.filter(f=>(f.program||'').includes(filterProg));
+  if(filterStatus)fines=fines.filter(f=>f.status===filterStatus);
+
+  if(!fines.length){wrap.innerHTML='<div class="alert alert-info">No fines match this filter.</div>';return;}
+
+  // Group by student
+  const studentMap={};
+  fines.forEach(f=>{
+    const key=String(f.roll_no).padStart(3,'0')+'|'+f.month_year;
+    if(!studentMap[key])studentMap[key]={roll:String(f.roll_no).padStart(3,'0'),name:f.name,program:f.program,month:f.month_year,lines:[],total:0,status:'unpaid'};
+    studentMap[key].lines.push(f);
+    studentMap[key].total+=parseFloat(f.amount)||0;
+    if(f.status==='paid')studentMap[key].status='paid';
+  });
+
+  const rows=Object.values(studentMap);
+  const totalUnpaid=rows.filter(r=>r.status==='unpaid').reduce((s,r)=>s+r.total,0);
+
+  wrap.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+    <div style="font-size:13px;color:var(--text2)">${rows.length} students &nbsp;·&nbsp; Total unpaid: <strong style="color:var(--red)">Rs. ${totalUnpaid}</strong></div>
+  </div>
+  <div class="table-wrap"><table>
+    <tr><th>Roll</th><th>Name</th><th>Program</th><th>Month</th><th>Fine Details</th><th>Total</th><th>Status</th><th>Action</th></tr>
+    ${rows.map(r=>`<tr>
+      <td><span class="badge badge-gold">${r.roll}</span></td>
+      <td><strong>${r.name}</strong></td>
+      <td style="font-size:11px">${r.program}</td>
+      <td style="font-size:12px">${r.month}</td>
+      <td style="font-size:11px">${r.lines.map(l=>l.description+': Rs.'+l.amount).join('<br>')}</td>
+      <td style="font-weight:700;color:var(--red)">Rs. ${r.total}</td>
+      <td><span class="badge ${r.status==='paid'?'badge-green':'badge-red'}">${r.status==='paid'?'✓ Paid':'⬤ Unpaid'}</span></td>
+      <td><button class="btn btn-sm btn-outline no-print" onclick="toggleFineStatus('${r.roll}','${r.month}')" style="font-size:11px">${r.status==='paid'?'Mark Unpaid':'Mark Paid'}</button></td>
+    </tr>`).join('')}
+  </table></div>`;
+}
+
+async function toggleFineStatus(roll,month){
+  const fines=DB.fines.filter(f=>String(f.roll_no).padStart(3,'0')===roll&&f.month_year===month);
+  if(!fines.length)return;
+  const currentStatus=fines[0].status;
+  const newStatus=currentStatus==='paid'?'unpaid':'paid';
+  fines.forEach(f=>f.status=newStatus);
+  await sheetsCall({action:'updateFineStatus',roll_no:roll,month_year:month,status:newStatus});
+  showToast(`Marked as ${newStatus}`,'success');
+  renderFineRegister();
+}
+
+function printFineSlips(){
+  const filterMonth=document.getElementById('fr-filter-month')?.value||'';
+  const filterProg=document.getElementById('fr-filter-prog')?.value||'';
+  const filterStatus=document.getElementById('fr-filter-status')?.value||'';
+
+  let fines=[...DB.fines];
+  if(filterMonth)fines=fines.filter(f=>f.month_year===filterMonth);
+  if(filterProg)fines=fines.filter(f=>(f.program||'').includes(filterProg));
+  if(filterStatus)fines=fines.filter(f=>f.status===filterStatus);
+  if(!fines.length){showToast('No fines to print','error');return;}
+
+  // Group by student
+  const studentMap={};
+  fines.forEach(f=>{
+    const key=String(f.roll_no).padStart(3,'0')+'|'+f.month_year;
+    if(!studentMap[key])studentMap[key]={roll:String(f.roll_no).padStart(3,'0'),name:f.name,program:f.program,month:f.month_year,lines:[],total:0,status:'unpaid'};
+    studentMap[key].lines.push(f);
+    studentMap[key].total+=parseFloat(f.amount)||0;
+    if(f.status==='paid')studentMap[key].status='paid';
+  });
+
+  const students=Object.values(studentMap);
+  const college='Government Graduate College Phoolnagar';
+
+  // Build print HTML — 8 slips per page, 2 columns
+  const slipHTML=students.map(s=>`
+    <div class="fine-slip">
+      <div class="slip-header">
+        <div class="slip-college">${college}<br>Fine Slip</div>
+        <div class="slip-title">FINE SLIP</div>
+      </div>
+      <div class="slip-student">
+        <div><div class="label">Name</div><div class="value">${s.name}</div></div>
+        <div><div class="label">Roll No</div><div class="value">${s.roll}</div></div>
+        <div><div class="label">Program</div><div class="value">${s.program}</div></div>
+        <div><div class="label">Month</div><div class="value">${s.month}</div></div>
+      </div>
+      <div class="slip-fines">
+        ${s.lines.map(l=>`<div class="fine-row"><span class="fine-label">${l.description}</span><span class="fine-amt">Rs. ${l.amount}</span></div>`).join('')}
+      </div>
+      <div class="slip-bottom">
+        <div class="total-block"><span class="total-label">TOTAL:</span><span class="total-amount">Rs. ${s.total}</span></div>
+        <span class="slip-status ${s.status==='paid'?'status-paid':'status-unpaid'}">${s.status==='paid'?'✓ PAID':'⬤ UNPAID'}</span>
+      </div>
+    </div>`).join('');
+
+  const css=`*{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;background:#fff;padding:5mm}
+    .page{width:200mm;display:grid;grid-template-columns:1fr 1fr;gap:3mm;page-break-after:always}
+    .fine-slip{border:1px solid #1a7a3a;border-radius:3px;padding:3mm 4mm;display:flex;flex-direction:column;gap:1.5mm;position:relative;overflow:hidden;break-inside:avoid}
+    .fine-slip::after{content:'';position:absolute;top:0;left:0;right:0;height:1.5mm;background:linear-gradient(135deg,#145e2c,#1a7a3a)}
+    .slip-header{display:flex;align-items:center;justify-content:space-between;padding-top:1.5mm;border-bottom:0.5px solid #ddd;padding-bottom:1.5mm}
+    .slip-college{font-size:7pt;font-weight:800;color:#145e2c;line-height:1.2}
+    .slip-title{font-size:6.5pt;font-weight:700;color:#fff;background:#1a7a3a;padding:0.8mm 2.5mm;border-radius:2px}
+    .slip-student{display:grid;grid-template-columns:1fr 1fr;gap:0.8mm 3mm;font-size:6.5pt}
+    .label{color:#888;font-size:6pt}.value{font-weight:700;color:#1a2e1a;font-size:6.5pt}
+    .slip-fines{border-top:0.5px dashed #ccc;border-bottom:0.5px dashed #ccc;padding:1mm 0;display:flex;flex-direction:column;gap:0.8mm}
+    .fine-row{display:flex;justify-content:space-between;font-size:6.5pt}
+    .fine-label{color:#444}.fine-amt{font-weight:700;color:#333}
+    .slip-bottom{display:flex;justify-content:space-between;align-items:center}
+    .total-block{display:flex;align-items:baseline;gap:2mm}
+    .total-label{font-size:7pt;font-weight:800;color:#145e2c}
+    .total-amount{font-size:9pt;font-weight:800;color:#c62828}
+    .slip-status{font-size:6.5pt;font-weight:700;padding:0.5mm 2.5mm;border-radius:2px}
+    .status-unpaid{background:#ffebee;color:#c62828;border:0.5px solid #ffcdd2}
+    .status-paid{background:#e8f5e9;color:#1b5e20;border:0.5px solid #a5d6a7}`;
+
+  // Group into pages of 8
+  const pages=[];
+  for(let i=0;i<students.length;i+=8){pages.push(students.slice(i,i+8));}
+
+  const pagesHTML=pages.map(page=>`<div class="page">${page.map(s=>`
+    <div class="fine-slip">
+      <div class="slip-header">
+        <div class="slip-college">${college}<br>Fine Slip</div>
+        <div class="slip-title">FINE SLIP</div>
+      </div>
+      <div class="slip-student">
+        <div><div class="label">Name</div><div class="value">${s.name}</div></div>
+        <div><div class="label">Roll No</div><div class="value">${s.roll}</div></div>
+        <div><div class="label">Program</div><div class="value">${s.program}</div></div>
+        <div><div class="label">Month</div><div class="value">${s.month}</div></div>
+      </div>
+      <div class="slip-fines">
+        ${s.lines.map(l=>`<div class="fine-row"><span class="fine-label">${l.description}</span><span class="fine-amt">Rs. ${l.amount}</span></div>`).join('')}
+      </div>
+      <div class="slip-bottom">
+        <div class="total-block"><span class="total-label">TOTAL:</span><span class="total-amount">Rs. ${s.total}</span></div>
+        <span class="slip-status ${s.status==='paid'?'status-paid':'status-unpaid'}">${s.status==='paid'?'✓ PAID':'⬤ UNPAID'}</span>
+      </div>
+    </div>`).join('')}</div>`).join('');
+
+  const win=window.open('','_blank');
+  win.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fine Slips</title><style>'+css+'</style></head><body>'+pagesHTML+'</body></html>');
+  win.document.close();
+  win.focus();
+  setTimeout(function(){win.print();},500);
+}
 function showSubjectReport(roll){
   const s=DB.students.find(x=>String(x.roll||x.roll_no).padStart(3,'0')===String(roll).padStart(3,'0'));
   if(!s)return;
