@@ -1816,7 +1816,18 @@ function showMarksReport(){
 // ══════════════════════════════════════════
 function formatScheduledTime(t){
   if(!t||!String(t).trim())return'—';
-  return String(t).trim();
+  const s=String(t).trim();
+  // Handle Sheets date-time format 1899-12-30T09:00:00.000Z
+  if(s.includes('1899-12-30T')){
+    const parts=s.replace('1899-12-30T','').replace('.000Z','').split(':');
+    if(parts.length>=2){
+      let h=parseInt(parts[0]);const m=parts[1];
+      const ap=h>=12?'PM':'AM';
+      h=h%12||12;
+      return h+':'+m+' '+ap;
+    }
+  }
+  return s;
 }
 
 function timeToMins(t){
