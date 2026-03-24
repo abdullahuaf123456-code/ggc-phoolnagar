@@ -358,7 +358,7 @@ function addToQueue(payload){
 async function loadFromSheets(){
   try{
     document.getElementById('loading-msg').textContent='Loading college data...';
-    const res=await fetch(SCRIPT_URL+'?t='+Date.now());
+    const res=await fetch(SCRIPT_URL+'?type=startup&t='+Date.now());
     const data=await res.json();
     if(data.success){
       if(data.students&&data.students.length)DB.students=data.students.map(s=>({...s,roll:String(s.roll_no||s.roll||'').padStart(3,'0')}));
@@ -366,8 +366,7 @@ async function loadFromSheets(){
       if(data.attendance&&data.attendance.length)DB.attendance=data.attendance;
       if(data.programs&&Object.keys(data.programs).length)DB.programs=data.programs;
       if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
-      if(data.marks&&data.marks.length)DB.marks=data.marks;
-      if(data.fines&&data.fines.length)DB.fines=data.fines;
+      // marks and fines loaded on demand — not at startup
       sheetsReady=true;
       document.getElementById('sheets-status').textContent='✓ Connected to Google Sheets';
       document.getElementById('sheets-status').style.color='#1b5e20';
@@ -379,6 +378,41 @@ async function loadFromSheets(){
   }
   document.getElementById('loading-overlay').style.display='none';
   document.getElementById('login-screen').style.display='flex';
+}
+
+// Lazy load functions — called when specific tabs open
+let marksLoaded=false;
+let finesLoaded=false;
+let fullAttendanceLoaded=false;
+
+async function loadMarksData(){
+  if(marksLoaded)return;
+  try{
+    const res=await fetch(SCRIPT_URL+'?type=marks&t='+Date.now());
+    const data=await res.json();
+    if(data.success&&data.marks)DB.marks=data.marks;
+    marksLoaded=true;
+  }catch(e){}
+}
+
+async function loadFinesData(){
+  if(finesLoaded)return;
+  try{
+    const res=await fetch(SCRIPT_URL+'?type=fines&t='+Date.now());
+    const data=await res.json();
+    if(data.success&&data.fines)DB.fines=data.fines;
+    finesLoaded=true;
+  }catch(e){}
+}
+
+async function loadFullAttendance(){
+  if(fullAttendanceLoaded)return;
+  try{
+    const res=await fetch(SCRIPT_URL+'?type=attendance&t='+Date.now());
+    const data=await res.json();
+    if(data.success&&data.attendance&&data.attendance.length)DB.attendance=data.attendance;
+    fullAttendanceLoaded=true;
+  }catch(e){}
 }
 
 function showSyncBar(msg,isError=false,isSuccess=false){
@@ -438,19 +472,19 @@ function setActiveNav(id){
   const el=document.getElementById('nav-'+id);if(el)el.classList.add('active');
 }
 
-async function refreshAttendance(){
+let lastRefresh=0;
+async function refreshAttendance(force=false){
+  const now=Date.now();
+  if(!force&&(now-lastRefresh)<5*60*1000)return;
   try{
-    const res=await fetch(SCRIPT_URL+'?t='+Date.now());
+    const res=await fetch(SCRIPT_URL+'?type=startup&t='+now);
     const data=await res.json();
     if(data.success){
-      // Always trust Sheets as source of truth
-      if(data.attendance&&data.attendance.length){
-        DB.attendance=data.attendance;
-      }
-      // Also refresh teacherGroups in case updated
-      if(data.teacherGroups&&data.teacherGroups.length){
-        DB.teacherGroups=data.teacherGroups;
-      }
+      if(data.attendance&&data.attendance.length)DB.attendance=data.attendance;
+      if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
+      lastRefresh=now;
+      // Reset lazy load flags so fresh data loads next time tabs open
+      fullAttendanceLoaded=false;
     }
   }catch(e){}
 }
@@ -460,10 +494,25 @@ function renderPage(id){
   const pages={'dashboard':pageDashboard,'students':pageStudents,'teachers':pageTeachers,'subjects':pageSubjects,'qr-cards':pageQRCards,'id-cards':pageIDCards,'timetable':pageTimetable,'marks':pageMarks,'fines':pageFines,'punctuality':pagePunctuality,'reports':pageReports,'take-attendance':pageTakeAttendance,'my-reports':pageMyReports};
   if(id==='dashboard'||id==='reports'||id==='my-reports'){
     c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading latest data...</p></div>`;
-    refreshAttendance().then(()=>{
+    refreshAttendance().then(async()=>{
+      if(id==='reports'||id==='my-reports')await loadFullAttendance();
       if(pages[id])c.innerHTML=pages[id]();
-      if(id==='qr-cards')setTimeout(renderQRCodes,100);
     });
+    return;
+  }
+  if(id==='marks'){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading marks data...</p></div>`;
+    loadMarksData().then(()=>{if(pages[id])c.innerHTML=pages[id]();});
+    return;
+  }
+  if(id==='fines'){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading fines data...</p></div>`;
+    Promise.all([loadMarksData(),loadFinesData()]).then(()=>{if(pages[id])c.innerHTML=pages[id]();});
+    return;
+  }
+  if(id==='punctuality'){
+    c.innerHTML=`<div style="text-align:center;padding:40px;color:var(--text2)"><div class="spin-big" style="margin:0 auto 12px"></div><p>Loading attendance data...</p></div>`;
+    loadFullAttendance().then(()=>{if(pages[id])c.innerHTML=pages[id]();setTimeout(renderPunctContent,100);});
     return;
   }
   if(pages[id])c.innerHTML=pages[id]();
@@ -1703,24 +1752,42 @@ function showMarksReport(){
   const testHtml=tests.map(key=>{
     const[testType,month]=key.split('||');
     const recs=studentMarks.filter(m=>m.test_type===testType&&m.month_year===month);
-    const totalObtained=recs.reduce((a,b)=>a+(b.obtained||0),0);
+    // Include absent subjects as zeros in percentage
+    const totalObtained=recs.reduce((a,b)=>a+(b.appeared==='no'?0:(b.obtained||0)),0);
     const totalMax=recs.reduce((a,b)=>a+(b.total||0),0);
     const pct=totalMax>0?Math.round(totalObtained/totalMax*100):0;
     const grade=pct>=90?'A+':pct>=80?'A':pct>=70?'B':pct>=60?'C':pct>=50?'D':'F';
     const cardClass=testType==='December Test'?'december':testType==='Send-up Exam'?'sendup':'';
+    const absentCount=recs.filter(r=>r.appeared==='no').length;
     return`<div class="marks-test-card ${cardClass}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <strong style="font-size:13px">${testType} — ${month}</strong>
-        <span class="badge badge-gold">${pct}% — ${grade}</span>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${absentCount>0?`<span class="badge badge-red">Absent: ${absentCount}</span>`:''}
+          <span class="badge badge-gold">${pct}% — ${grade}</span>
+        </div>
       </div>
       <div class="table-wrap"><table>
         <tr><th>Subject</th><th>Obtained</th><th>Total</th><th>%</th><th>Grade</th></tr>
         ${recs.map(r=>{
-          const rp=r.total>0?Math.round(r.obtained/r.total*100):0;
-          const rg=rp>=90?'A+':rp>=80?'A':rp>=70?'B':rp>=60?'C':rp>=50?'D':'F';
-          return`<tr><td><strong>${r.subject}</strong></td><td style="font-weight:700">${r.obtained}</td><td>${r.total}</td><td><strong>${rp}%</strong></td><td><span class="badge ${rp>=70?'badge-green':rp>=50?'badge-amber':'badge-red'}">${rg}</span></td></tr>`;
+          const isAbsent=r.appeared==='no';
+          const rp=isAbsent?0:(r.total>0?Math.round(r.obtained/r.total*100):0);
+          const rg=isAbsent?'—':rp>=90?'A+':rp>=80?'A':rp>=70?'B':rp>=60?'C':rp>=50?'D':'F';
+          return`<tr style="${isAbsent?'background:#fff5f5':''}">
+            <td><strong>${r.subject}</strong></td>
+            <td style="font-weight:700;color:${isAbsent?'var(--red)':'inherit'}">${isAbsent?'<span style="color:var(--red);font-weight:800">A</span>':r.obtained}</td>
+            <td>${r.total}</td>
+            <td><strong style="color:${isAbsent?'var(--red)':'inherit'}">${isAbsent?'0%':rp+'%'}</strong></td>
+            <td><span class="badge ${isAbsent?'badge-red':rp>=70?'badge-green':rp>=50?'badge-amber':'badge-red'}">${rg}</span></td>
+          </tr>`;
         }).join('')}
-        <tr style="background:var(--gold-light);font-weight:700"><td><strong>TOTAL</strong></td><td><strong>${totalObtained}</strong></td><td><strong>${totalMax}</strong></td><td><strong>${pct}%</strong></td><td><span class="badge badge-gold">${grade}</span></td></tr>
+        <tr style="background:var(--gold-light);font-weight:700">
+          <td><strong>TOTAL</strong></td>
+          <td><strong>${totalObtained}</strong></td>
+          <td><strong>${totalMax}</strong></td>
+          <td><strong>${pct}%</strong></td>
+          <td><span class="badge badge-gold">${grade}</span></td>
+        </tr>
       </table></div>
     </div>`;
   }).join('');
@@ -2576,7 +2643,7 @@ async function syncPending(){
   if(btn){btn.innerHTML='🔄 Sync Now';btn.disabled=false;}
   if(success>0){
     showToast(`✓ ${success} session(s) synced to Google Sheets`,'success');
-    // Refresh data from Sheets after sync
+    fullAttendanceLoaded=false;
     await refreshAttendance(true);
   }
   if(remaining.length>0){
