@@ -381,27 +381,28 @@ async function loadFromSheets(){
 }
 
 // Lazy load functions — called when specific tabs open
-let marksLoaded=false;
-let finesLoaded=false;
+let marksLoadedAt=0;
+let finesLoadedAt=0;
 let fullAttendanceLoaded=false;
+const MARKS_CACHE=5*60*1000;// 5 min cache
 
 async function loadMarksData(){
-  if(marksLoaded)return;
+  const now=Date.now();
+  if(marksLoadedAt&&(now-marksLoadedAt)<MARKS_CACHE)return;
   try{
-    const res=await fetch(SCRIPT_URL+'?type=marks&t='+Date.now());
+    const res=await fetch(SCRIPT_URL+'?type=marks&t='+now);
     const data=await res.json();
-    if(data.success&&data.marks)DB.marks=data.marks;
-    marksLoaded=true;
+    if(data.success&&data.marks){DB.marks=data.marks;marksLoadedAt=now;}
   }catch(e){}
 }
 
 async function loadFinesData(){
-  if(finesLoaded)return;
+  const now=Date.now();
+  if(finesLoadedAt&&(now-finesLoadedAt)<MARKS_CACHE)return;
   try{
-    const res=await fetch(SCRIPT_URL+'?type=fines&t='+Date.now());
+    const res=await fetch(SCRIPT_URL+'?type=fines&t='+now);
     const data=await res.json();
-    if(data.success&&data.fines)DB.fines=data.fines;
-    finesLoaded=true;
+    if(data.success&&data.fines){DB.fines=data.fines;finesLoadedAt=now;}
   }catch(e){}
 }
 
@@ -1719,10 +1720,12 @@ async function saveMarksEntry(prog,testType,month){
       const inp=document.getElementById('mk-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
       const totInp=document.getElementById('mktot-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
       const st=totInp?parseInt(totInp.value)||50:50;
-      if(inp&&inp.value!==''){
-        const absChk=document.getElementById('mkabs-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
-        const appeared=absChk&&absChk.checked?'no':'yes';
-        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:appeared==='no'?0:parseFloat(inp.value)||0,total:st,appeared});
+      const absChk=document.getElementById('mkabs-'+roll+'-'+subj.replace(/[^a-zA-Z0-9]/g,'_'));
+      const isAbsent=absChk&&absChk.checked;
+      // Save if marks entered OR if marked absent
+      if((inp&&inp.value!=='')||isAbsent){
+        const appeared=isAbsent?'no':'yes';
+        records.push({roll_no:roll,name:s.name,program:prog,test_type:testType,month_year:month,subject:subj,obtained:isAbsent?0:parseFloat(inp.value)||0,total:st,appeared});
       }
     });
   });
@@ -1759,6 +1762,7 @@ function showMarksReport(){
     const grade=pct>=90?'A+':pct>=80?'A':pct>=70?'B':pct>=60?'C':pct>=50?'D':'F';
     const cardClass=testType==='December Test'?'december':testType==='Send-up Exam'?'sendup':'';
     const absentCount=recs.filter(r=>r.appeared==='no').length;
+    // Use records as-is — absent subjects now saved with appeared=no
     return`<div class="marks-test-card ${cardClass}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <strong style="font-size:13px">${testType} — ${month}</strong>
@@ -2644,6 +2648,8 @@ async function syncPending(){
   if(success>0){
     showToast(`✓ ${success} session(s) synced to Google Sheets`,'success');
     fullAttendanceLoaded=false;
+    marksLoadedAt=0;
+    finesLoadedAt=0;
     await refreshAttendance(true);
   }
   if(remaining.length>0){
