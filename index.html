@@ -579,7 +579,20 @@ function renderPage(id){
   if(id==='qr-cards')setTimeout(renderQRCodes,100);
   if(id==='id-cards')setTimeout(renderIDCards,100);
   if(id==='punctuality')setTimeout(renderPunctContent,100);
-  if(id==='take-attendance')initAttendancePage();
+  if(id==='take-attendance'){
+    initAttendancePage();
+    // Auto-select detected session
+    const det=autoDetectSession();
+    if(det){
+      setTimeout(()=>{
+        const yrEl=document.getElementById('att-year');
+        const subjEl=document.getElementById('att-subject');
+        if(yrEl)yrEl.value=det.year;
+        if(subjEl)subjEl.value=det.subject;
+        if(yrEl&&subjEl&&yrEl.value&&subjEl.value)loadStudentsForSubject();
+      },150);
+    }
+  }
 }
 
 function pageDashboard(){
@@ -612,7 +625,13 @@ function pageDashboard(){
     ${todayRecs.length===0?`<p style="color:var(--text2);font-size:13px;text-align:center;padding:20px 0">No attendance recorded in last 7 days.</p>`:`
     <div class="table-wrap"><table>
       <tr><th>Date</th><th>Subject</th><th>Year</th><th>Teacher</th><th>Present</th><th>Absent</th><th>Time</th></tr>
-      ${[...new Set(todayRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')+'|'+(a.year||'')))].sort((a,b)=>b.localeCompare(a)).map(key=>{
+      ${[...new Set(todayRecs.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')+'|'+(a.year||'')))].sort((a,b)=>{
+        // Sort by date desc, then by submitted time desc
+        const[da]=a.split('|');
+        const[db]=b.split('|');
+        if(db!==da)return db.localeCompare(da);
+        return b.localeCompare(a);
+      }).map(key=>{
         const[d,subj,tid,yr]=key.split('|');
         const recs=todayRecs.filter(a=>String(a.date).split('T')[0]===d&&a.subject===subj&&String(a.teacher_id||'')===tid&&(a.year||'')===(yr||''));
         const p=recs.filter(a=>a.status==='present').length;
@@ -991,10 +1010,20 @@ function renderQRCodes(){
 function pageTakeAttendance(){
   const teacher=currentUser.teacher;
   const subjs=Array.isArray(teacher.subjects)?teacher.subjects:String(teacher.subjects).split(',').map(x=>x.trim());
+  const detected=autoDetectSession();
+  const detectedBanner=detected?`
+    <div style="background:var(--green-light);border:1.5px solid var(--green);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--green)">✓ Auto-detected class</div>
+        <div style="font-size:13px;color:var(--text)">${detected.subject} — ${detected.year} — ${detected.group==='science'?'Science':'Arts'} — ${formatScheduledTime(detected.scheduled_time)}</div>
+      </div>
+      <div style="font-size:11px;color:var(--text2)">Not your class? Select manually below</div>
+    </div>`:'';
   return`<div class="attend-header">
     <h3>📷 Take Attendance</h3>
     <p>Select year and subject → Students scan QR card on your phone</p>
   </div>
+  ${detectedBanner}
   <div class="card" style="margin-bottom:16px">
     <div class="card-header"><span class="card-title">Session Setup</span></div>
     <div class="form-row">
@@ -1076,6 +1105,43 @@ function selectGroupAndLoad(group,subj,year){
   });
   currentScanSession={subject:subj,year,group,present:new Set(),absent:new Set(),enrolled};
   renderScanInterface();
+}
+function getDayAbbr(){
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  return days[new Date().getDay()];
+}
+
+function autoDetectSession(){
+  if(currentRole!=='teacher')return null;
+  const tid=currentUser.teacher.id||currentUser.teacher.teacher_id;
+  const nowMins=timeToMins(new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}));
+  if(nowMins===null)return null;
+  const today=getDayAbbr();
+  const WINDOW=45;// ±45 minutes detection window
+
+  // Get all assignments for this teacher
+  const assignments=DB.teacherGroups.filter(tg=>tg.teacher_id===tid);
+  
+  // Find matches within time window AND matching day
+  const matches=assignments.filter(tg=>{
+    if(!tg.scheduled_time)return false;
+    const schedMins=timeToMins(tg.scheduled_time);
+    if(schedMins===null)return false;
+    const diff=Math.abs(nowMins-schedMins);
+    const dayMatch=!tg.days||tg.days===''||tg.days.split(',').map(d=>d.trim()).includes(today);
+    return diff<=WINDOW&&dayMatch;
+  });
+
+  if(!matches.length)return null;
+
+  // Pick closest match
+  const best=matches.reduce((a,b)=>{
+    const aMins=timeToMins(a.scheduled_time);
+    const bMins=timeToMins(b.scheduled_time);
+    return Math.abs(nowMins-(aMins||0))<Math.abs(nowMins-(bMins||0))?a:b;
+  });
+
+  return best;
 }
 function loadStudentsForSubject(){
   const subj=document.getElementById('att-subject').value;
@@ -1509,13 +1575,14 @@ function pageTimetable(){
   </div>
   <div class="alert alert-info" style="margin-bottom:16px">Group assignments control which students each teacher sees when taking attendance.</div>
   <div class="table-wrap"><table id="timetable-table">
-    <tr><th>Teacher</th><th>Subject</th><th>Year</th><th>Group</th><th>Scheduled</th><th>Actions</th></tr>
+    <tr><th>Teacher</th><th>Subject</th><th>Year</th><th>Group</th><th>Scheduled</th><th>Days</th><th>Actions</th></tr>
     ${DB.teacherGroups.map((tg,i)=>`<tr>
       <td><strong>${tg.teacher_name||tg.teacher_id}</strong><br><span style="font-size:10px;color:var(--text3)">${tg.teacher_id}</span></td>
       <td>${tg.subject}</td>
       <td><span class="badge badge-gold">${tg.year}</span></td>
       <td><span class="badge ${tg.group==='science'?'badge-green':'badge-amber'}">${tg.group==='science'?'FSc+ICS+ICom':'FA+FA-IT'}</span></td>
       <td><span class="badge badge-gray">${tg.scheduled_time?formatScheduledTime(tg.scheduled_time):'—'}</span></td>
+      <td style="font-size:11px;color:var(--text2)">${tg.days||'—'}</td>
       <td><button class="btn btn-outline btn-sm" onclick="editTimetableRow(${i})">Edit</button>
           <button class="btn btn-danger btn-sm" onclick="deleteTimetableRow(${i})">Delete</button></td>
     </tr>`).join('')}
@@ -1548,11 +1615,13 @@ async function saveTimetableRow(){
   const year=document.getElementById('tt-year').value;
   const group=document.getElementById('tt-group').value;
   const scheduled_time=document.getElementById('tt-time').value;
-  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group,scheduled_time};
+  const dayBoxes=document.querySelectorAll('input[name="tt-day"]:checked');
+  const days=[...dayBoxes].map(d=>d.value).join(',');
+  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group,scheduled_time,days};
   const exists=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&tg.year===year&&tg.group===group);
   if(exists){showToast('Already exists','error');return;}
   DB.teacherGroups.push(newRow);
-  await sheetsCall({action:'saveTeacherGroup',row:newRow});
+  await sheetsCall({action:'saveTeacherGroup',row:{...newRow,days:newRow.days||''}});
   closeModal();showToast('Assignment added','success');renderPage('timetable');
 }
 function editTimetableRow(idx){
@@ -1573,6 +1642,14 @@ function editTimetableRow(idx){
       <input type="text" id="tt-time" value="${tg.scheduled_time||''}" placeholder="e.g. 8:15 AM" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;outline:none">
       <div style="font-size:10px;color:var(--text3);margin-top:3px">Type as: 8:15 AM &nbsp;|&nbsp; 9:45 AM &nbsp;|&nbsp; 10:30 AM</div>
     </div>
+    <div class="form-group"><label>Days</label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px">
+        ${['Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;background:var(--surface2);padding:4px 10px;border-radius:20px;border:1.5px solid var(--border);font-size:12px">
+            <input type="checkbox" name="tt-day" value="${d}" ${(tg.days||'').includes(d)?'checked':''} style="accent-color:var(--green)"> ${d}
+          </label>`).join('')}
+      </div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" onclick="updateTimetableRow(${idx})">Update</button>
       <button class="btn btn-outline btn-sm" onclick="closeModal()">Cancel</button>
@@ -1586,7 +1663,9 @@ async function updateTimetableRow(idx){
   const group=document.getElementById('tt-group').value;
   const scheduled_time=document.getElementById('tt-time').value;
   const oldRow=DB.teacherGroups[idx];
-  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group,scheduled_time};
+  const dayBoxesU=document.querySelectorAll('input[name="tt-day"]:checked');
+  const days=[...dayBoxesU].map(d=>d.value).join(',');
+  const newRow={teacher_id:tid,teacher_name:teacher?teacher.name:'',subject,year,group,scheduled_time,days};
   DB.teacherGroups[idx]=newRow;
   await sheetsCall({action:'updateTeacherGroup',oldRow,newRow});
   closeModal();showToast('Updated','success');renderPage('timetable');
@@ -1947,6 +2026,83 @@ function pagePunctuality(){
   <div id="punct-content"></div>`;
 }
 
+function showTeacherPunctReport(tid){
+  const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
+  if(!teacher)return;
+  const name=teacher.name||tid;
+
+  // Get all sessions for this teacher
+  const recs=DB.attendance.filter(a=>String(a.teacher_id||'')===String(tid));
+  const sessionKeys=[...new Set(recs.map(a=>String(a.date||'').split('T')[0]+'||'+a.subject+'||'+(a.year||'')))];
+
+  const sessions=sessionKeys.map(key=>{
+    const[date,subject,year]=key.split('||');
+    const sessionRecs=recs.filter(a=>String(a.date||'').split('T')[0]===date&&a.subject===subject&&(a.year||'')===year);
+    const tg=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject);
+    const submittedMins=timeToMins(sessionRecs[0]?.time);
+    const scheduledMins=tg?.scheduled_time?timeToMins(tg.scheduled_time+':00'):null;
+    let delayMins=null,status='no-schedule';
+    if(submittedMins!==null&&scheduledMins!==null){
+      delayMins=submittedMins-scheduledMins;
+      status=delayMins<=10?'ontime':delayMins<=20?'late':'verylate';
+    }
+    return{date,subject,year,submittedMins,scheduledMins,delayMins,status,
+      students:sessionRecs.length,present:sessionRecs.filter(a=>a.status==='present').length};
+  }).sort((a,b)=>b.date.localeCompare(a.date));
+
+  // Calculate stats
+  const withSched=sessions.filter(s=>s.scheduledMins!==null);
+  const onTime=withSched.filter(s=>s.status==='ontime').length;
+  const late=withSched.filter(s=>s.status==='late').length;
+  const veryLate=withSched.filter(s=>s.status==='verylate').length;
+  const avgDelay=withSched.length?Math.round(withSched.reduce((a,b)=>a+(b.delayMins||0),0)/withSched.length):null;
+  const onTimePct=withSched.length?Math.round(onTime/withSched.length*100):null;
+  const col=onTimePct===null?'var(--text2)':onTimePct>=85?'var(--green)':onTimePct>=70?'var(--amber)':'var(--red)';
+
+  showModal(`⏰ ${name} — Punctuality Report`,`
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">
+      <div style="background:var(--green-light);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:${col}">${onTimePct!==null?onTimePct+'%':'—'}</div>
+        <div style="font-size:11px;color:var(--text2)">On-Time Rate</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--text)">${sessions.length}</div>
+        <div style="font-size:11px;color:var(--text2)">Total Sessions</div>
+      </div>
+      <div style="background:var(--green-light);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--green)">${onTime}</div>
+        <div style="font-size:11px;color:var(--text2)">On Time (≤10 min)</div>
+      </div>
+      <div style="background:var(--amber-light);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--amber)">${late}</div>
+        <div style="font-size:11px;color:var(--text2)">Late (10-20 min)</div>
+      </div>
+      <div style="background:var(--red-light);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--red)">${veryLate}</div>
+        <div style="font-size:11px;color:var(--text2)">Very Late (>20 min)</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:22px;font-weight:800;color:var(--text)">${avgDelay!==null?(avgDelay<=0?Math.abs(avgDelay)+' min early':avgDelay+' min late'):'—'}</div>
+        <div style="font-size:11px;color:var(--text2)">Avg Delay</div>
+      </div>
+    </div>
+    <div class="table-wrap"><table>
+      <tr><th>Date</th><th>Subject</th><th>Year</th><th>Scheduled</th><th>Submitted</th><th>Delay</th><th>Status</th></tr>
+      ${sessions.map(s=>{
+        const delayStr=s.delayMins===null?'—':s.delayMins<=0?`<span style="color:var(--green)">${Math.abs(s.delayMins)} min early</span>`:`<span style="color:${s.delayMins<=20?'var(--amber)':'var(--red)'}">+${s.delayMins} min</span>`;
+        const badge=s.status==='ontime'?'<span class="badge badge-green">✓ On Time</span>':s.status==='late'?'<span class="badge badge-amber">⚠ Late</span>':s.status==='verylate'?'<span class="badge badge-red">✗ Very Late</span>':'<span class="badge badge-gray">No Schedule</span>';
+        return`<tr style="${s.status==='verylate'?'background:var(--red-light)':s.status==='late'?'background:var(--amber-light)':''}">
+          <td style="font-size:11px">${formatDate(s.date)}</td>
+          <td><strong>${s.subject}</strong></td>
+          <td style="font-size:11px">${s.year||'—'}</td>
+          <td style="font-weight:600">${s.scheduledMins!==null?minsToTimeStr(s.scheduledMins):'—'}</td>
+          <td style="font-weight:600">${s.submittedMins!==null?minsToTimeStr(s.submittedMins):'—'}</td>
+          <td>${delayStr}</td>
+          <td>${badge}</td>
+        </tr>`;
+      }).join('')}
+    </table></div>`);
+}
 function renderPunctContent(){
   const _pc=document.getElementById('punct-content');
   if(!_pc)return;
@@ -1979,7 +2135,7 @@ function renderPunctContent(){
     let delayMins=null,status='unknown';
     if(submittedMins!==null&&scheduledMins!==null){
       delayMins=submittedMins-scheduledMins;
-      status=delayMins<=0?'ontime':delayMins<=15?'late':'verylate';
+      status=delayMins<=10?'ontime':delayMins<=20?'late':'verylate';
     } else if(submittedMins!==null){
       status='submitted';
     }
@@ -2042,8 +2198,8 @@ function renderPunctContent(){
     <!-- STAT CARDS -->
     <div class="stats-grid" style="margin-bottom:20px">
       <div class="stat-card sc-green"><div class="stat-label">On Time</div><div class="stat-value" style="color:var(--green)">${onTime}</div><div class="stat-sub">${withSchedule.length?Math.round(onTime/withSchedule.length*100):0}% of scheduled</div></div>
-      <div class="stat-card sc-gold"><div class="stat-label">Late (≤15 min)</div><div class="stat-value" style="color:var(--amber)">${late}</div><div class="stat-sub">${withSchedule.length?Math.round(late/withSchedule.length*100):0}% of scheduled</div></div>
-      <div class="stat-card sc-red"><div class="stat-label">Very Late (>15 min)</div><div class="stat-value" style="color:var(--red)">${veryLate}</div><div class="stat-sub">${withSchedule.length?Math.round(veryLate/withSchedule.length*100):0}% of scheduled</div></div>
+      <div class="stat-card sc-gold"><div class="stat-label">Late (10-20 min)</div><div class="stat-value" style="color:var(--amber)">${late}</div><div class="stat-sub">${withSchedule.length?Math.round(late/withSchedule.length*100):0}% of scheduled</div></div>
+      <div class="stat-card sc-red"><div class="stat-label">Very Late (>20 min)</div><div class="stat-value" style="color:var(--red)">${veryLate}</div><div class="stat-sub">${withSchedule.length?Math.round(veryLate/withSchedule.length*100):0}% of scheduled</div></div>
       <div class="stat-card sc-gray"><div class="stat-label">No Schedule Set</div><div class="stat-value">${noSchedule}</div><div class="stat-sub">Set in Timetable tab</div></div>
     </div>
 
@@ -2056,12 +2212,12 @@ function renderPunctContent(){
       <div class="table-wrap"><table>
         <tr><th>Date</th><th>Teacher</th><th>Subject</th><th>Class</th><th>Scheduled</th><th>Submitted</th><th>Delay</th><th>Status</th></tr>
         ${sessions.map(s=>{
-          const delayStr=s.delayMins===null?'—':s.delayMins<=0?`<span style="color:var(--green)">${Math.abs(s.delayMins)} min early</span>`:`<span style="color:${s.delayMins<=15?'var(--amber)':'var(--red)'}">+${s.delayMins} min</span>`;
+          const delayStr=s.delayMins===null?'—':s.delayMins<=0?`<span style="color:var(--green)">${Math.abs(s.delayMins)} min early</span>`:`<span style="color:${s.delayMins<=20?'var(--amber)':'var(--red)'}">+${s.delayMins} min</span>`;
           const statusBadge=s.status==='ontime'?'<span class="badge badge-green">✓ On Time</span>':s.status==='late'?'<span class="badge badge-amber">⚠ Late</span>':s.status==='verylate'?'<span class="badge badge-red">✗ Very Late</span>':'<span class="badge badge-gray">No Schedule</span>';
           const rowStyle=s.status==='verylate'?'background:var(--red-light)':s.status==='late'?'background:var(--amber-light)':'';
           return`<tr style="${rowStyle}">
             <td style="font-size:11px;color:var(--text2)">${formatDate(s.date)}</td>
-            <td><strong>${s.teacherName}</strong></td>
+            <td><strong style="cursor:pointer;color:var(--green);text-decoration:underline" onclick="showTeacherPunctReport('${s.tid}')">${s.teacherName}</strong></td>
             <td>${s.subject}</td>
             <td style="font-size:11px">${s.classLabel||'—'}</td>
             <td style="font-weight:600">${s.scheduledMins!==null?minsToTimeStr(s.scheduledMins):'—'}</td>
@@ -2086,7 +2242,7 @@ function renderPunctContent(){
         const avgDelayCol=t.avgDelay===null?'var(--text3)':t.avgDelay<=0?'var(--green)':t.avgDelay<=15?'var(--amber)':'var(--red)';
         return`<div class="perf-card" style="border-left:4px solid ${borderCol}">
           <div class="perf-card-header">
-            <strong style="font-size:14px">${t.name}</strong>
+            <strong style="font-size:14px;cursor:pointer;color:var(--green);text-decoration:underline" onclick="showTeacherPunctReport('${t.tid}')">${t.name}</strong>
             <span style="font-size:10px;padding:3px 8px;border-radius:12px;font-weight:600;${badgeStyle}">${badgeLabel}</span>
           </div>
           <div class="perf-metric">
