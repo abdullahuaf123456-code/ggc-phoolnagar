@@ -1106,6 +1106,20 @@ function selectGroupAndLoad(group,subj,year){
   currentScanSession={subject:subj,year,group,present:new Set(),absent:new Set(),enrolled};
   renderScanInterface();
 }
+
+
+function getPKTTime(){
+  // Pakistan Standard Time = UTC+5 always
+  const now=new Date();
+  const pktOffset=5*60*60*1000;
+  const pkt=new Date(now.getTime()+pktOffset-now.getTimezoneOffset()*60*1000);
+  const h=pkt.getUTCHours();
+  const m=pkt.getUTCMinutes();
+  const ap=h>=12?'PM':'AM';
+  const h12=h%12||12;
+  return{timeStr:`${h12}:${String(m).padStart(2,'0')} ${ap}`,dayIndex:pkt.getUTCDay(),mins:h*60+m};
+}
+
 function getDayAbbr(){
   const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   return days[new Date().getDay()];
@@ -1114,9 +1128,10 @@ function getDayAbbr(){
 function autoDetectSession(){
   if(currentRole!=='teacher')return null;
   const tid=currentUser.teacher.id||currentUser.teacher.teacher_id;
-  const nowMins=timeToMins(new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}));
+  const pkt=getPKTTime();
+  const nowMins=pkt.mins;
+  const today=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][pkt.dayIndex];
   if(nowMins===null)return null;
-  const today=getDayAbbr();
   const WINDOW=45;// ±45 minutes detection window
 
   // Get all assignments for this teacher
