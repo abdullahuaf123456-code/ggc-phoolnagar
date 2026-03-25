@@ -355,6 +355,35 @@ function addToQueue(payload){
   }catch(e){}
 }
 
+// ── OFFLINE CACHE HELPERS ──
+function saveToCache(data){
+  try{
+    localStorage.setItem('ggc_students',JSON.stringify(data.students||[]));
+    localStorage.setItem('ggc_teachers',JSON.stringify(data.teachers||[]));
+    localStorage.setItem('ggc_programs',JSON.stringify(data.programs||{}));
+    localStorage.setItem('ggc_teacherGroups',JSON.stringify(data.teacherGroups||[]));
+    localStorage.setItem('ggc_attendance',JSON.stringify(data.attendance||[]));
+    localStorage.setItem('ggc_cache_time',Date.now().toString());
+  }catch(e){}
+}
+
+function loadFromCache(){
+  try{
+    const students=JSON.parse(localStorage.getItem('ggc_students')||'[]');
+    const teachers=JSON.parse(localStorage.getItem('ggc_teachers')||'[]');
+    const programs=JSON.parse(localStorage.getItem('ggc_programs')||'{}');
+    const teacherGroups=JSON.parse(localStorage.getItem('ggc_teacherGroups')||'[]');
+    const attendance=JSON.parse(localStorage.getItem('ggc_attendance')||'[]');
+    const cacheTime=parseInt(localStorage.getItem('ggc_cache_time')||'0');
+    return{students,teachers,programs,teacherGroups,attendance,cacheTime};
+  }catch(e){return null;}
+}
+
+function hasCachedData(){
+  return !!localStorage.getItem('ggc_students')&&
+    JSON.parse(localStorage.getItem('ggc_students')||'[]').length>0;
+}
+
 async function loadFromSheets(){
   try{
     document.getElementById('loading-msg').textContent='Loading college data...';
@@ -368,13 +397,36 @@ async function loadFromSheets(){
       if(data.teacherGroups&&data.teacherGroups.length)DB.teacherGroups=data.teacherGroups;
       // marks and fines loaded on demand — not at startup
       sheetsReady=true;
+      // Save fresh data to cache for offline use
+      saveToCache({
+        students:DB.students,teachers:DB.teachers,
+        programs:DB.programs,teacherGroups:DB.teacherGroups,
+        attendance:DB.attendance
+      });
       document.getElementById('sheets-status').textContent='✓ Connected to Google Sheets';
       document.getElementById('sheets-status').style.color='#1b5e20';
     }else{
       document.getElementById('sheets-status').textContent='⚠ Could not load data';
     }
   }catch(e){
-    document.getElementById('sheets-status').textContent='⚠ Offline — data will not be saved';
+    // Network failed — try loading from cache
+    document.getElementById('loading-msg').textContent='Offline — loading cached data...';
+    const cache=loadFromCache();
+    if(cache&&cache.students.length>0){
+      DB.students=cache.students.map(s=>({...s,roll:String(s.roll_no||s.roll||'').padStart(3,'0')}));
+      DB.teachers=cache.teachers.map(t=>({...t,id:t.teacher_id||t.id,subjects:typeof t.subjects==='string'?t.subjects.split(',').map(x=>x.trim()):(t.subjects||[])}));
+      DB.programs=cache.programs;
+      DB.teacherGroups=cache.teacherGroups;
+      DB.attendance=cache.attendance;
+      sheetsReady=false;
+      const cacheDate=cache.cacheTime?new Date(cache.cacheTime).toLocaleDateString('en-PK'):'unknown';
+      document.getElementById('sheets-status').textContent='📶 Offline — using cached data from '+cacheDate;
+      document.getElementById('sheets-status').style.color='#e65100';
+    }else{
+      // No cache available
+      document.getElementById('sheets-status').textContent='⚠ No internet and no cached data. Please connect and refresh.';
+      document.getElementById('sheets-status').style.color='#c62828';
+    }
   }
   document.getElementById('loading-overlay').style.display='none';
   document.getElementById('login-screen').style.display='flex';
@@ -458,6 +510,10 @@ function showApp(){
   const app=document.getElementById('app');app.style.display='flex';
   document.getElementById('topbar-role').textContent=currentRole==='admin'?'Admin Panel':'Teacher Panel';
   document.getElementById('topbar-user').textContent=currentUser.name;
+  // Show offline warning if using cached data
+  if(!sheetsReady){
+    showSyncBar('📶 Offline mode — attendance will sync when internet returns',false,false);
+  }
   buildNav();renderPage(currentRole==='admin'?'dashboard':'take-attendance');
 }
 
@@ -486,6 +542,8 @@ async function refreshAttendance(force=false){
       lastRefresh=now;
       // Reset lazy load flags so fresh data loads next time tabs open
       fullAttendanceLoaded=false;
+      // Update cache with fresh attendance
+      saveToCache({students:DB.students,teachers:DB.teachers,programs:DB.programs,teacherGroups:DB.teacherGroups,attendance:DB.attendance});
     }
   }catch(e){}
 }
