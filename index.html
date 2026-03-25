@@ -2026,71 +2026,158 @@ function pagePunctuality(){
   <div id="punct-content"></div>`;
 }
 
+function getExpectedSessions(tid, filterStart, filterEnd){
+  // Get all TeacherGroup assignments for this teacher
+  const assignments = DB.teacherGroups.filter(tg => tg.teacher_id === tid && tg.days && tg.days.trim() !== '');
+  if(!assignments.length) return [];
+
+  const dayMap = {'Mon':1,'Tue':2,'Wed':3,'Thu':4,'Fri':5,'Sat':6,'Sun':0};
+  const expected = [];
+
+  // Iterate each past day in the filter period
+  const start = new Date(filterStart);
+  const end = new Date(filterEnd);
+  const today = new Date();
+  // Never go beyond today
+  if(end > today) end.setTime(today.getTime());
+
+  for(let d = new Date(start); d <= end; d.setDate(d.getDate()+1)){
+    const dayAbbr = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    const dateStr = d.toISOString().split('T')[0];
+
+    assignments.forEach(tg => {
+      const scheduledDays = (tg.days||'').split(',').map(x=>x.trim());
+      if(scheduledDays.includes(dayAbbr)){
+        expected.push({
+          date: dateStr,
+          subject: tg.subject,
+          year: tg.year,
+          group: tg.group,
+          scheduledMins: timeToMins(tg.scheduled_time)
+        });
+      }
+    });
+  }
+  return expected;
+}
+
 function showTeacherPunctReport(tid){
   const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
   if(!teacher)return;
   const name=teacher.name||tid;
 
-  // Get all sessions for this teacher
-  const recs=DB.attendance.filter(a=>String(a.teacher_id||'')===String(tid));
+  // Determine filter period based on current punctFilter
+  const today=todayStr();
+  const weekStart=getWeekStart();
+  const monthStart=getMonthStart();
+  let filterStart, filterLabel;
+  if(punctFilter==='today'){filterStart=today;filterLabel='Today';}
+  else if(punctFilter==='week'){filterStart=weekStart;filterLabel='This Week';}
+  else if(punctFilter==='month'){filterStart=monthStart;filterLabel='This Month';}
+  else{
+    // All time — use earliest attendance date
+    const dates=DB.attendance.map(a=>String(a.date||'').split('T')[0]).filter(Boolean).sort();
+    filterStart=dates[0]||today;
+    filterLabel='All Time';
+  }
+
+  // Get submitted sessions for this teacher in period
+  const recs=DB.attendance.filter(a=>{
+    const d=String(a.date||'').split('T')[0];
+    return String(a.teacher_id||'')===String(tid)&&d>=filterStart&&d<=today;
+  });
+
   const sessionKeys=[...new Set(recs.map(a=>String(a.date||'').split('T')[0]+'||'+a.subject+'||'+(a.year||'')))];
 
-  const sessions=sessionKeys.map(key=>{
+  const submitted=sessionKeys.map(key=>{
     const[date,subject,year]=key.split('||');
     const sessionRecs=recs.filter(a=>String(a.date||'').split('T')[0]===date&&a.subject===subject&&(a.year||'')===year);
-    const tg=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject);
+    const tg=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&(tg.year===year||!year));
     const submittedMins=timeToMins(sessionRecs[0]?.time);
-    const scheduledMins=tg?.scheduled_time?timeToMins(tg.scheduled_time+':00'):null;
+    const scheduledMins=tg?.scheduled_time?timeToMins(tg.scheduled_time):null;
     let delayMins=null,status='no-schedule';
     if(submittedMins!==null&&scheduledMins!==null){
       delayMins=submittedMins-scheduledMins;
       status=delayMins<=10?'ontime':delayMins<=20?'late':'verylate';
     }
-    return{date,subject,year,submittedMins,scheduledMins,delayMins,status,
+    return{date,subject,year,submittedMins,scheduledMins,delayMins,status,submitted:true,
       students:sessionRecs.length,present:sessionRecs.filter(a=>a.status==='present').length};
   }).sort((a,b)=>b.date.localeCompare(a.date));
 
-  // Calculate stats
-  const withSched=sessions.filter(s=>s.scheduledMins!==null);
+  // Get expected sessions from timetable
+  const expected=getExpectedSessions(tid,filterStart,today);
+
+  // Find missed sessions — expected but not submitted
+  const missed=expected.filter(exp=>{
+    return!submitted.find(s=>s.date===exp.date&&s.subject===exp.subject&&s.year===exp.year);
+  });
+
+  // Stats
+  const withSched=submitted.filter(s=>s.scheduledMins!==null);
   const onTime=withSched.filter(s=>s.status==='ontime').length;
   const late=withSched.filter(s=>s.status==='late').length;
   const veryLate=withSched.filter(s=>s.status==='verylate').length;
   const avgDelay=withSched.length?Math.round(withSched.reduce((a,b)=>a+(b.delayMins||0),0)/withSched.length):null;
   const onTimePct=withSched.length?Math.round(onTime/withSched.length*100):null;
+  const compliancePct=expected.length?Math.round(submitted.length/expected.length*100):null;
   const col=onTimePct===null?'var(--text2)':onTimePct>=85?'var(--green)':onTimePct>=70?'var(--amber)':'var(--red)';
+  const compCol=compliancePct===null?'var(--text2)':compliancePct>=90?'var(--green)':compliancePct>=70?'var(--amber)':'var(--red)';
 
-  showModal(`⏰ ${name} — Punctuality Report`,`
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px">
-      <div style="background:var(--green-light);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:${col}">${onTimePct!==null?onTimePct+'%':'—'}</div>
-        <div style="font-size:11px;color:var(--text2)">On-Time Rate</div>
+  showModal(`⏰ ${name} — Punctuality Report (${filterLabel})`,`
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:var(--text)">${expected.length}</div>
+        <div style="font-size:10px;color:var(--text2)">Expected Sessions</div>
       </div>
-      <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--text)">${sessions.length}</div>
-        <div style="font-size:11px;color:var(--text2)">Total Sessions</div>
+      <div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:var(--green)">${submitted.length}</div>
+        <div style="font-size:10px;color:var(--text2)">Submitted</div>
       </div>
-      <div style="background:var(--green-light);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--green)">${onTime}</div>
-        <div style="font-size:11px;color:var(--text2)">On Time (≤10 min)</div>
+      <div style="background:var(--red-light);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:var(--red)">${missed.length}</div>
+        <div style="font-size:10px;color:var(--text2)">Missed</div>
       </div>
-      <div style="background:var(--amber-light);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--amber)">${late}</div>
-        <div style="font-size:11px;color:var(--text2)">Late (10-20 min)</div>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:${compCol}">${compliancePct!==null?compliancePct+'%':'—'}</div>
+        <div style="font-size:10px;color:var(--text2)">Compliance Rate</div>
       </div>
-      <div style="background:var(--red-light);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--red)">${veryLate}</div>
-        <div style="font-size:11px;color:var(--text2)">Very Late (>20 min)</div>
+      <div style="background:var(--green-light);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:${col}">${onTimePct!==null?onTimePct+'%':'—'}</div>
+        <div style="font-size:10px;color:var(--text2)">On-Time Rate</div>
       </div>
-      <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center">
-        <div style="font-size:22px;font-weight:800;color:var(--text)">${avgDelay!==null?(avgDelay<=0?Math.abs(avgDelay)+' min early':avgDelay+' min late'):'—'}</div>
-        <div style="font-size:11px;color:var(--text2)">Avg Delay</div>
+      <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:20px;font-weight:800;color:var(--amber)">${avgDelay!==null?(avgDelay<=0?Math.abs(avgDelay)+'m early':avgDelay+'m late'):'—'}</div>
+        <div style="font-size:10px;color:var(--text2)">Avg Delay</div>
       </div>
     </div>
-    <div class="table-wrap"><table>
+
+    <div style="display:flex;gap:8px;margin-bottom:10px;font-size:12px;flex-wrap:wrap">
+      <span class="badge badge-green">✓ On Time: ${onTime}</span>
+      <span class="badge badge-amber">⚠ Late: ${late}</span>
+      <span class="badge badge-red">✗ Very Late: ${veryLate}</span>
+      ${missed.length?`<span class="badge badge-red">⊘ Missed: ${missed.length}</span>`:''}
+    </div>
+
+    ${missed.length?`
+    <div style="margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">⊘ Missed Sessions</div>
+      <div class="table-wrap"><table>
+        <tr><th>Date</th><th>Subject</th><th>Year</th><th>Scheduled</th></tr>
+        ${missed.map(m=>`<tr style="background:var(--red-light)">
+          <td style="font-size:11px">${formatDate(m.date)}</td>
+          <td><strong>${m.subject}</strong></td>
+          <td style="font-size:11px">${m.year||'—'}</td>
+          <td style="font-weight:600">${m.scheduledMins!==null?minsToTimeStr(m.scheduledMins):'—'}</td>
+        </tr>`).join('')}
+      </table></div>
+    </div>`:''}
+
+    <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:6px">📋 Submitted Sessions</div>
+    ${submitted.length?`<div class="table-wrap"><table>
       <tr><th>Date</th><th>Subject</th><th>Year</th><th>Scheduled</th><th>Submitted</th><th>Delay</th><th>Status</th></tr>
-      ${sessions.map(s=>{
-        const delayStr=s.delayMins===null?'—':s.delayMins<=0?`<span style="color:var(--green)">${Math.abs(s.delayMins)} min early</span>`:`<span style="color:${s.delayMins<=20?'var(--amber)':'var(--red)'}">+${s.delayMins} min</span>`;
-        const badge=s.status==='ontime'?'<span class="badge badge-green">✓ On Time</span>':s.status==='late'?'<span class="badge badge-amber">⚠ Late</span>':s.status==='verylate'?'<span class="badge badge-red">✗ Very Late</span>':'<span class="badge badge-gray">No Schedule</span>';
+      ${submitted.map(s=>{
+        const delayStr=s.delayMins===null?'—':s.delayMins<=0?`<span style="color:var(--green)">${Math.abs(s.delayMins)}m early</span>`:`<span style="color:${s.delayMins<=20?'var(--amber)':'var(--red)'}">+${s.delayMins}m</span>`;
+        const badge=s.status==='ontime'?'<span class="badge badge-green">✓</span>':s.status==='late'?'<span class="badge badge-amber">⚠</span>':s.status==='verylate'?'<span class="badge badge-red">✗</span>':'<span class="badge badge-gray">—</span>';
         return`<tr style="${s.status==='verylate'?'background:var(--red-light)':s.status==='late'?'background:var(--amber-light)':''}">
           <td style="font-size:11px">${formatDate(s.date)}</td>
           <td><strong>${s.subject}</strong></td>
@@ -2101,8 +2188,11 @@ function showTeacherPunctReport(tid){
           <td>${badge}</td>
         </tr>`;
       }).join('')}
-    </table></div>`);
+    </table></div>`:'<div class="alert alert-info">No sessions submitted in this period.</div>'}
+  `);
 }
+
+
 function renderPunctContent(){
   const _pc=document.getElementById('punct-content');
   if(!_pc)return;
