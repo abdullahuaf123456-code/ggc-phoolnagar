@@ -1143,7 +1143,9 @@ function autoDetectSession(){
     const schedMins=timeToMins(tg.scheduled_time);
     if(schedMins===null)return false;
     const diff=Math.abs(nowMins-schedMins);
-    const dayMatch=!tg.days||tg.days===''||tg.days.split(',').map(d=>d.trim()).includes(today);
+    const dayAbbrs={'Monday':'Mon','Tuesday':'Tue','Wednesday':'Wed','Thursday':'Thu','Friday':'Fri','Saturday':'Sat','Sunday':'Sun'};
+    const normDays=(tg.days||'').split(',').map(d=>{const t=d.trim();return dayAbbrs[t]||t;});
+    const dayMatch=!tg.days||tg.days===''||normDays.includes(today);
     return diff<=WINDOW&&dayMatch;
   });
 
@@ -2011,12 +2013,14 @@ function minsToTimeStr(mins){
 }
 
 function getWeekStart(){
-  const d=new Date();d.setDate(d.getDate()-d.getDay());
+  const pktMs=new Date().getTime()+(5*60*60*1000)-new Date().getTimezoneOffset()*60000;
+  const d=new Date(pktMs);d.setUTCDate(d.getUTCDate()-d.getUTCDay());
   return d.toISOString().split('T')[0];
 }
 function getMonthStart(){
-  const d=new Date();
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
+  const pktMs=new Date().getTime()+(5*60*60*1000)-new Date().getTimezoneOffset()*60000;
+  const d=new Date(pktMs);
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-01';
 }
 
 let punctFilter='today';
@@ -2061,7 +2065,7 @@ function getExpectedSessions(tid, filterStart, filterEnd){
     const dateStr = d.toISOString().split('T')[0];
 
     assignments.forEach(tg => {
-      const scheduledDays = (tg.days||'').split(',').map(x=>x.trim());
+      const scheduledDays = (tg.days||'').split(',').map(x=>{const t=x.trim();return {'Monday':'Mon','Tuesday':'Tue','Wednesday':'Wed','Thursday':'Thu','Friday':'Fri','Saturday':'Sat','Sunday':'Sun'}[t]||t;});
       if(scheduledDays.includes(dayAbbr)){
         expected.push({
           date: dateStr,
@@ -2917,7 +2921,7 @@ function showToast(msg,type=''){
   t.textContent=msg;t.className='toast '+(type||'');
   t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);
 }
-function todayStr(){return new Date().toISOString().split('T')[0];}
+function todayStr(){const pkt=getPKTTime();const n=new Date(new Date().getTime()+(5*60*60*1000)-new Date().getTimezoneOffset()*60000);return n.toISOString().split('T')[0];}
 function formatDate(d){
   if(!d)return '';
   const clean=String(d).split('T')[0];
@@ -2997,9 +3001,11 @@ window.addEventListener('load',()=>{
 
 // Auto-sync when internet returns
 window.addEventListener('online',()=>{
+  // Clear offline warning banner
+  hideSyncBar();
   const q=JSON.parse(localStorage.getItem('ggc_sync_queue')||'[]');
   if(q.length>0){
-    showToast(`📶 Internet restored — syncing ${q.length} pending session(s)...`,'success');
+    showToast(`📶 Internet restored — syncing ${q.length} pending class(es)...`,'success');
     setTimeout(syncPending,1000);
   } else {
     showToast('📶 Internet restored','success');
