@@ -1110,9 +1110,9 @@ function selectGroupAndLoad(group,subj,year){
 
 function getPKTTime(){
   // Pakistan Standard Time = UTC+5 always
+  // Simply add 5 hours to UTC — no device timezone involved
   const now=new Date();
-  const pktOffset=5*60*60*1000;
-  const pkt=new Date(now.getTime()+pktOffset-now.getTimezoneOffset()*60*1000);
+  const pkt=new Date(now.getTime()+5*60*60*1000);
   const h=pkt.getUTCHours();
   const m=pkt.getUTCMinutes();
   const ap=h>=12?'PM':'AM';
@@ -1656,7 +1656,7 @@ function editTimetableRow(idx){
       <select id="tt-group"><option value="science" ${tg.group==='science'?'selected':''}>FSc+ICS+ICom</option><option value="arts" ${tg.group==='arts'?'selected':''}>FA+FA-IT</option></select>
     </div>
     <div class="form-group"><label>Scheduled Time</label>
-      <input type="text" id="tt-time" value="${tg.scheduled_time||''}" placeholder="e.g. 8:15 AM" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;outline:none">
+      <input type="text" id="tt-time" value="${formatScheduledTime(tg.scheduled_time)||''}" placeholder="e.g. 8:15 AM" style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;outline:none">
       <div style="font-size:10px;color:var(--text3);margin-top:3px">Type as: 8:15 AM &nbsp;|&nbsp; 9:45 AM &nbsp;|&nbsp; 10:30 AM</div>
     </div>
     <div class="form-group"><label>Days</label>
@@ -2013,13 +2013,12 @@ function minsToTimeStr(mins){
 }
 
 function getWeekStart(){
-  const pktMs=new Date().getTime()+(5*60*60*1000)-new Date().getTimezoneOffset()*60000;
-  const d=new Date(pktMs);d.setUTCDate(d.getUTCDate()-d.getUTCDay());
+  const d=new Date(new Date().getTime()+5*60*60*1000);
+  d.setUTCDate(d.getUTCDate()-d.getUTCDay());
   return d.toISOString().split('T')[0];
 }
 function getMonthStart(){
-  const pktMs=new Date().getTime()+(5*60*60*1000)-new Date().getTimezoneOffset()*60000;
-  const d=new Date(pktMs);
+  const d=new Date(new Date().getTime()+5*60*60*1000);
   return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-01';
 }
 
@@ -2921,7 +2920,7 @@ function showToast(msg,type=''){
   t.textContent=msg;t.className='toast '+(type||'');
   t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);
 }
-function todayStr(){const pkt=getPKTTime();const n=new Date(new Date().getTime()+(5*60*60*1000)-new Date().getTimezoneOffset()*60000);return n.toISOString().split('T')[0];}
+function todayStr(){const n=new Date(new Date().getTime()+5*60*60*1000);return n.toISOString().split('T')[0];}
 function formatDate(d){
   if(!d)return '';
   const clean=String(d).split('T')[0];
