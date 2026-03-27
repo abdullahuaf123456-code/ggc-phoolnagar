@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ggc-attend-v3';
+const CACHE_NAME = 'ggc-attend-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',
