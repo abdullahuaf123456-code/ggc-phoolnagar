@@ -602,7 +602,7 @@ function pageDashboard(){
   const todayOnly=DB.attendance.filter(a=>String(a.date||'').split('T')[0]===today);
   const presentToday=new Set(todayOnly.filter(a=>a.status==='present').map(a=>a.roll_no)).size;
   const below75=DB.students.filter(s=>{const st=DB.getAttendanceStats(s.roll||s.roll_no);return st.total>0&&st.pct<75;}).length;
-  const sessions=new Set(DB.attendance.map(a=>a.date+'|'+a.subject)).size;
+  const sessions=new Set(DB.attendance.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')+'|'+(a.year||''))).size;
   return`<div class="dash-hero">
     <svg class="dash-hero-crest" viewBox="0 0 100 100"><use href="#ggc-crest"/></svg>
     <div class="dash-hero-text">
@@ -2237,7 +2237,7 @@ function renderPunctContent(){
     const[date,subject,tid]=key.split('||');
     const sessionRecs=recs.filter(a=>String(a.date||'').split('T')[0]===date&&a.subject===subject&&String(a.teacher_id||'')===tid);
     const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
-    const tg=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject);
+    const tg=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&(tg.year===yearLabel||!yearLabel));
     const submittedMins=timeToMins(sessionRecs[0]?.time);
     const scheduledMins=tg?.scheduled_time?timeToMins(tg.scheduled_time+':00'):null;
     let delayMins=null,status='unknown';
