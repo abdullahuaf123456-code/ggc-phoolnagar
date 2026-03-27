@@ -2237,6 +2237,7 @@ function renderPunctContent(){
     const[date,subject,tid]=key.split('||');
     const sessionRecs=recs.filter(a=>String(a.date||'').split('T')[0]===date&&a.subject===subject&&String(a.teacher_id||'')===tid);
     const teacher=DB.teachers.find(t=>(t.id||t.teacher_id)===tid);
+    const yearLabel=(sessionRecs[0]?.year||'');
     const tg=DB.teacherGroups.find(tg=>tg.teacher_id===tid&&tg.subject===subject&&(tg.year===yearLabel||!yearLabel));
     const submittedMins=timeToMins(sessionRecs[0]?.time);
     const scheduledMins=tg?.scheduled_time?timeToMins(tg.scheduled_time+':00'):null;
@@ -2247,7 +2248,6 @@ function renderPunctContent(){
     } else if(submittedMins!==null){
       status='submitted';
     }
-    const yearLabel=(sessionRecs[0]?.year||'');
     const group=tg?.group??(tg?.group||'');
     const classLabel=yearLabel+(group?' '+(group==='science'?'Science':'Arts'):'');
     return{date,subject,tid,teacherName:sessionRecs[0]?.teacher_name||tid,submittedMins,scheduledMins,delayMins,status,classLabel,total:sessionRecs.length,present:sessionRecs.filter(a=>a.status==='present').length};
