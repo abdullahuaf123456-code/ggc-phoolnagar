@@ -695,8 +695,12 @@ function pageDashboard(){
   const todayOnly=DB.attendance.filter(a=>String(a.date||'').split('T')[0]===today);
 
   // Stat calculations
-  const presentToday=new Set(todayOnly.filter(a=>a.status==='present').map(a=>String(a.roll_no).padStart(3,'0'))).size;
-  const absentToday=new Set(todayOnly.filter(a=>a.status==='absent').map(a=>String(a.roll_no).padStart(3,'0'))).size;
+  // Present Today — student appeared as present in AT LEAST ONE session today
+  const presentRolls=new Set(todayOnly.filter(a=>a.status==='present').map(a=>String(a.roll_no).padStart(3,'0')));
+  const presentToday=presentRolls.size;
+  // Absent Today — ALL enrolled students who are NOT in the present set
+  // present + absent always = total students
+  const absentToday=DB.students.length-presentToday;
 
   // Scheduled sessions — past assignments today
   const dayAbbrs2={'Monday':'Mon','Tuesday':'Tue','Wednesday':'Wed','Thursday':'Thu','Friday':'Fri','Saturday':'Sat','Sunday':'Sun'};
@@ -709,8 +713,11 @@ function pageDashboard(){
     return normDays.includes(todayDay)&&schedMins<=pkt.mins;
   }).length;
 
-  // Submitted sessions today
-  const submittedSessions=new Set(todayOnly.map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')+'|'+(a.year||''))).size;
+  // Submitted sessions BY NOW — only count submissions where time has passed (matches scheduled logic)
+  const submittedSessions=new Set(todayOnly.filter(a=>{
+    const subMins=timeToMins(a.time);
+    return subMins===null||subMins<=pkt.mins;
+  }).map(a=>String(a.date).split('T')[0]+'|'+a.subject+'|'+(a.teacher_id||'')+'|'+(a.year||''))).size;
 
   // Time slot data
   const slotData=getDashboardSlotData();
@@ -739,10 +746,10 @@ function pageDashboard(){
 
   <div class="stats-grid">
     <div class="stat-card sc-green"><div class="stat-label">Total Students</div><div class="stat-value">${DB.students.length}</div><div class="stat-sub">Enrolled</div></div>
-    <div class="stat-card sc-teal"><div class="stat-label">Present Today</div><div class="stat-value" style="color:var(--green)">${presentToday}</div><div class="stat-sub">All classes</div></div>
-    <div class="stat-card sc-red"><div class="stat-label">Absent Today</div><div class="stat-value" style="color:var(--red)">${absentToday}</div><div class="stat-sub">All classes</div></div>
+    <div class="stat-card sc-teal"><div class="stat-label">Present Today</div><div class="stat-value" style="color:var(--green)">${presentToday}</div><div class="stat-sub">Present in any session</div></div>
+    <div class="stat-card sc-red"><div class="stat-label">Absent Today</div><div class="stat-value" style="color:var(--red)">${absentToday}</div><div class="stat-sub">Not yet present</div></div>
     <div class="stat-card sc-gold"><div class="stat-label">Scheduled Sessions</div><div class="stat-value" style="color:var(--gold)">${scheduledSessions}</div><div class="stat-sub">By now</div></div>
-    <div class="stat-card sc-gray"><div class="stat-label">Submitted Sessions</div><div class="stat-value">${submittedSessions}</div><div class="stat-sub">Today</div></div>
+    <div class="stat-card sc-gray"><div class="stat-label">Submitted Sessions</div><div class="stat-value">${submittedSessions}</div><div class="stat-sub">By now</div></div>
   </div>
 
   ${!sheetsReady?`<div class="alert alert-warning" style="margin-bottom:16px">⚠️ Not connected to Google Sheets — showing cached data.</div>`:''}
