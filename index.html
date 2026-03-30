@@ -885,6 +885,12 @@ function showAddStudent(){
         </div>
       </div>
       <div class="form-group" style="margin-bottom:0"><label>Address</label><input type="text" id="ns-address" placeholder="Home address (optional)"></div>
+      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Photo for ID Card</div>
+        <div style="color:var(--text3);font-size:11px;margin-bottom:6px">Upload photo now or add later via Edit Student</div>
+        <input type="file" id="ns-photo" accept="image/*" style="font-size:12px;width:100%" onchange="previewPhoto(this)">
+        <div id="photo-preview-new" style="margin-top:6px"></div>
+      </div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary btn-sm" id="add-student-btn" onclick="addStudent()">Add Student</button>
@@ -917,7 +923,9 @@ async function addStudent(){
   const phone=document.getElementById('ns-phone').value.trim();
   const blood=document.getElementById('ns-blood').value;
   const address=document.getElementById('ns-address').value.trim();
-  const student={roll_no:roll,roll:roll,name,father_name:father,program:prog,subjects:subjectsStr,session,phone,blood_group:blood,address,photo:''};
+  const photoInput=document.getElementById('ns-photo');
+  const photo=photoInput&&photoInput.dataset.base64?photoInput.dataset.base64:'';
+  const student={roll_no:roll,roll:roll,name,father_name:father,program:prog,subjects:subjectsStr,session,phone,blood_group:blood,address,photo};
   const btn=document.getElementById('add-student-btn');
   btn.innerHTML='<span class="spinner"></span> Saving...';btn.disabled=true;
   try{
@@ -1685,7 +1693,9 @@ function previewPhoto(input){
   const reader=new FileReader();
   reader.onload=e=>{
     input.dataset.base64=e.target.result;
-    const prev=document.getElementById('photo-preview');
+    // Handle both add-student (photo-preview-new) and edit-student (photo-preview) forms
+    const prevId=input.id==='ns-photo'?'photo-preview-new':'photo-preview';
+    const prev=document.getElementById(prevId);
     if(prev)prev.innerHTML=`<img src="${e.target.result}" style="width:55px;height:70px;object-fit:cover;border-radius:3px;border:1px solid var(--border)">`;
   };
   reader.readAsDataURL(file);
